@@ -30,7 +30,6 @@ struct DispatchOrder: Identifiable {
 
     var isMine: Bool { targetuser == Net.shared.userid }
 
-    /// 状态文本（照原版：1 进行中 / 2 已完成 / 3 已关闭）
     var statusText: String {
         switch status {
         case "1": return "进行中"
@@ -39,27 +38,14 @@ struct DispatchOrder: Identifiable {
         default:  return status.isEmpty ? "进行中" : status
         }
     }
-    /// 目标人
+
     var manText: String { targetName.isEmpty ? targetuser : targetName }
-    /// 日期行：起止时间
+
     var dateText: String {
         let s = stdt.count >= 10 ? String(stdt.prefix(10)) : stdt
         let e = eddt.count >= 10 ? String(eddt.prefix(10)) : eddt
         if s.isEmpty && e.isEmpty { return insdt }
         return s == e ? s : "\(s) 至 \(e)"
-    }
-    var dateText: String { insdt.count >= 10 ? String(insdt.prefix(10)) : insdt }
-    var statusText: String {
-        switch status {
-        case "1": return isMine ? "待我处理" : "进行中"
-        case "2": return "已完成"
-        case "3": return "已关闭"
-        default:  return "状态 \(status)"
-        }
-    }
-    var statusColor: Color {
-        if status == "2" { return Color(red: 0.09, green: 0.64, blue: 0.29) }
-        return isMine ? Color(red: 0.85, green: 0.47, blue: 0.02) : C.sub
     }
 }
 
