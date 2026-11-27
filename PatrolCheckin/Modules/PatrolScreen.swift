@@ -244,8 +244,7 @@ struct PatrolScreen: View {
         }
         .padding(.bottom, 10)
         .background(
-            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 8,
-                                   bottomTrailingRadius: 8, topTrailingRadius: 0)
+            RoundCorners(corners: [.bottomLeft, .bottomRight], radius: 8)
                 .fill(C.pointUncom)
         )
         .padding(.horizontal, 0)
@@ -340,8 +339,7 @@ struct PatrolDetailScreen: View {
                 .padding(.top, 15)
             }
             .background(
-                UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 1,
-                                       bottomTrailingRadius: 1, topTrailingRadius: 10)
+                RoundCorners(corners: [.topLeft, .topRight], radius: 10)
                     .fill(Color.white)
             )
             .padding(.top, -15)
