@@ -36,6 +36,7 @@ targets:
           - UIInterfaceOrientationPortrait
         UIRequiredDeviceCapabilities:
           - armv7
+        UIUserInterfaceStyle: Light
         NSCameraUsageDescription: 用于拍摄巡检现场照片并上传
         NSPhotoLibraryUsageDescription: 用于从相册选择巡检照片
         NSPhotoLibraryAddUsageDescription: 用于保存拍摄的巡检照片
