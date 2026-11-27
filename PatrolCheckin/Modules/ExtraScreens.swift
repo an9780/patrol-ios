@@ -170,6 +170,7 @@ struct MaintainFillScreen: View {
     @State private var endTime = Date()
     @State private var requirement = ""
     @State private var equipmentName = ""
+    @State private var showGoods = false
     @State private var manName = ""
     @State private var cost = ""
     @State private var busy = false
@@ -215,7 +216,10 @@ struct MaintainFillScreen: View {
                     }
                     .padding(.vertical, 6)
 
-                    rowText("*选择设备：", equipmentName.isEmpty ? "请选择设备" : equipmentName)
+                    Button { showGoods = true } label: {
+                        rowText("*选择设备：", equipmentName.isEmpty ? "请选择设备" : equipmentName)
+                    }
+                    .buttonStyle(.plain)
                     rowText("*维保人：", manName.isEmpty ? "请选择维保人" : manName)
 
                     HStack(spacing: 0) {
@@ -257,6 +261,12 @@ struct MaintainFillScreen: View {
             .background(Color(hex: 0xF9F9F9))
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showGoods) {
+            GoodsPickerScreen { g in
+                equipmentName = g.name
+            }
+            .environmentObject(app)
+        }
         .task { manName = app.caption }
     }
 
