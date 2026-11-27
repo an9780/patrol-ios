@@ -1,0 +1,42 @@
+name: PatrolCheckin
+
+options:
+  bundleIdPrefix: com.patrol
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_BITCODE: "NO"
+
+targets:
+  PatrolCheckin:
+    type: application
+    platform: iOS
+    sources:
+      - path: PatrolCheckin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.patrol.checkin
+        PRODUCT_NAME: PatrolCheckin
+    info:
+      path: PatrolCheckin/Info.plist
+      properties:
+        CFBundleDisplayName: 巡检打卡
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - armv7
+        NSCameraUsageDescription: 用于拍摄巡检现场照片并上传
+        NSPhotoLibraryUsageDescription: 用于从相册选择巡检照片
+        NSPhotoLibraryAddUsageDescription: 用于保存拍摄的巡检照片
+        NSLocationWhenInUseUsageDescription: 用于记录巡检位置
