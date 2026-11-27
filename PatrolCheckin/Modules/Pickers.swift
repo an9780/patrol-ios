@@ -38,12 +38,10 @@ struct GoodsPickerScreen: View {
                             onPick(o)
                             presentation.wrappedValue.dismiss()
                         } label: {
-                            HStack {
-                                Text(o.name).foregroundColor(C.text)
-                                Spacer()
-                                Image(systemName: "plus.circle").foregroundColor(C.blue)
-                            }
+                            SelectableGreenRow(title: o.name, checked: false)
                         }
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
                     }
                     .listStyle(.plain)
                 }
@@ -135,15 +133,11 @@ struct UserPickerScreen: View {
                                     presentation.wrappedValue.dismiss()
                                 }
                             } label: {
-                                HStack {
-                                    Text(u.name).foregroundColor(C.text)
-                                    Spacer()
-                                    if multiple && selected.contains(u.id) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(C.blue)
-                                    }
-                                }
+                                SelectableGreenRow(title: u.name,
+                                                   checked: selected.contains(u.id))
                             }
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
                         }
                     }
                     .listStyle(.plain)
