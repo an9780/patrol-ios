@@ -331,73 +331,112 @@ struct PointListBySection: View {
 struct RemarkImageScreen: View {
     @EnvironmentObject var app: AppState
     let recordId: String
+    let pointId: String
 
     @State private var photos: [UIImage] = []
     @State private var busy = false
-    @State private var message: String?
+    @Environment(\.presentationMode) private var presentation
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                PhotoStrip(photos: $photos)
-
-                Button {
-                    Task { await upload() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if busy { ProgressView().tint(.white) }
-                        Text(busy ? "上传中…" : "上传照片")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(photos.isEmpty ? C.sub.opacity(0.4) : C.blue)
-                    .foregroundColor(.white).cornerRadius(10)
-                }
-                .disabled(busy || photos.isEmpty || recordId.isEmpty)
-
-                if let m = message {
-                    Text(m).font(.caption).foregroundColor(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14).background(Color.white).cornerRadius(10)
-                }
+        VStack(spacing: 0) {
+            // 标题栏
+            ZStack {
+                LinearGradient(colors: [C.gradStart, C.gradEnd],
+                               startPoint: .leading, endPoint: .trailing)
+                Text("补充图片").font(.system(size: 15)).foregroundColor(.white)
             }
-            .padding(12)
+            .frame(height: 50)
+
+            // 「点击图片」提示条（#E9E9E9 描边，padding 6）
+            Text("点击图片")
+                .font(.system(size: 14))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
+                .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+
+            // 图片网格区 120dp
+            PhotoGrid(photos: $photos)
+                .frame(height: 120)
+
+            // 提交按钮 16sp 白，高 30
+            Button {
+                Task { await submit() }
+            } label: {
+                HStack(spacing: 6) {
+                    if busy { ProgressView().tint(.white).scaleEffect(0.7) }
+                    Text(busy ? "提交中…" : "提交")
+                        .font(.system(size: 16)).foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity).frame(height: 30)
+                .background(C.blue).cornerRadius(3)
+            }
+            .disabled(busy || photos.isEmpty)
+            .padding(10)
+
+            Spacer()
         }
         .background(C.bg)
-        .navigationTitle("图片补充")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
     }
 
-    private func upload() async {
+    private func submit() async {
         busy = true
-        message = nil
         var files: [Net.UploadFile] = []
         for (i, img) in photos.enumerated() {
             guard let data = img.jpegData(compressionQuality: 0.72) else { continue }
-            files.append(Net.UploadFile(
-                field: "filelist",
-                filename: "IMG_\(Int(Date().timeIntervalSince1970))_\(i).jpg",
-                mime: "image/jpeg",
-                data: data))
+            files.append(Net.UploadFile(field: "filelist",
+                                        filename: "IMG_\(Int(Date().timeIntervalSince1970))_\(i).jpg",
+                                        mime: "image/jpeg", data: data))
         }
-        do {
-            let raw = try await Net.shared.upload(
-                "SIPAIIS_Base/base/updateFile.do",
-                fields: ["masterId": recordId,
-                         "recordId": recordId,
-                         "tbName": "TB_TimeEfficiency_PatrolRecord_file",
-                         "nameSpace": "patrolrecordfile"],
-                files: files)
-            let ok = Net.isOK(raw)
-            if ok {
-                app.show("上传成功 ✓")
-                photos = []
-            } else {
-                message = Net.message(raw)
-            }
-        } catch {
-            message = error.localizedDescription
-        }
+        _ = try? await Net.shared.upload(
+            "SIPAIIS_DataCenter/base/updateFile.do",
+            fields: ["masterId": pointId,
+                     "tbName": "tb_patrol_point_file",
+                     "nameSpace": "patrolpointfile",
+                     "recordId": recordId],
+            files: files)
         busy = false
+        app.show("图片已补充 ✓")
+        presentation.wrappedValue.dismiss()
     }
 }
+
+/// 120dp 高的图片网格（对应 GridView）
+struct PhotoGrid: View {
+    @Binding var photos: [UIImage]
+    @State private var showCamera = false
+    @State private var showLibrary = false
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(photos.enumerated()), id: \.offset) { idx, img in
+                    ZStack(alignment: .topTrailing) {
+                        Image(uiImage: img).resizable().scaledToFill()
+                            .frame(width: 100, height: 100).clipped().cornerRadius(4)
+                        Button { photos.remove(at: idx) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.white)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .offset(x: 3, y: -3)
+                    }
+                }
+                Button { showCamera = true } label: {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 24)).foregroundColor(C.blue)
+                        .frame(width: 100, height: 100)
+                        .background(Color.white).cornerRadius(4)
+                        .overlay(RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 8)
+        }
+        .sheet(isPresented: $showCamera) { CameraPicker(images: $photos, useCamera: true) }
+        .sheet(isPresented: $showLibrary) { CameraPicker(images: $photos, useCamera: false) }
+    }
+}
+
+
