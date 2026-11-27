@@ -21,6 +21,7 @@ struct DispatchOrder: Identifiable {
     let status: String
     let typeName: String
     let targetuser: String
+    let targetName: String
     let targetcompanyid: String
     let company: String
     let insdt: String
@@ -28,6 +29,25 @@ struct DispatchOrder: Identifiable {
     let eddt: String
 
     var isMine: Bool { targetuser == Net.shared.userid }
+
+    /// 状态文本（照原版：1 进行中 / 2 已完成 / 3 已关闭）
+    var statusText: String {
+        switch status {
+        case "1": return "进行中"
+        case "2": return "已完成"
+        case "3": return "已关闭"
+        default:  return status.isEmpty ? "进行中" : status
+        }
+    }
+    /// 目标人
+    var manText: String { targetName.isEmpty ? targetuser : targetName }
+    /// 日期行：起止时间
+    var dateText: String {
+        let s = stdt.count >= 10 ? String(stdt.prefix(10)) : stdt
+        let e = eddt.count >= 10 ? String(eddt.prefix(10)) : eddt
+        if s.isEmpty && e.isEmpty { return insdt }
+        return s == e ? s : "\(s) 至 \(e)"
+    }
     var dateText: String { insdt.count >= 10 ? String(insdt.prefix(10)) : insdt }
     var statusText: String {
         switch status {
@@ -74,6 +94,7 @@ final class DispatchStore: ObservableObject {
 
     @Published var contents = ""
     @Published var status = ""
+    @Published var detailRows: [(String, String)] = []
     @Published var steps: [FlowStep] = []
     @Published var detailError: String?
     @Published var uploading = false
@@ -112,6 +133,7 @@ final class DispatchStore: ObservableObject {
                     status: Net.str(be, "status"),
                     typeName: Net.str(be, "typeName"),
                     targetuser: Net.str(be, "targetuser"),
+                    targetName: Net.str(be, "targetUserName"),
                     targetcompanyid: Net.str(be, "targetcompanyid"),
                     company: Net.str(company, "sname"),
                     insdt: Net.str(task, "createTime"),
@@ -138,6 +160,29 @@ final class DispatchStore: ObservableObject {
             let be = Net.dict(res["businessEntity"])
             contents = Net.str(be, "contents")
             status = Net.str(be, "status")
+
+            let comp = Net.dict(be["targetCompany"])
+            let lvl: String = {
+                switch Net.str(be, "adjustmentLevel") {
+                case "1": return "一级"
+                case "2": return "二级"
+                case "3": return "三级"
+                default:  return Net.str(be, "adjustmentLevel")
+                }
+            }()
+            let s0 = Net.str(be, "stdt"), e0 = Net.str(be, "eddt")
+            let d0: String = {
+                let a = s0.count >= 10 ? String(s0.prefix(10)) : s0
+                let b = e0.count >= 10 ? String(e0.prefix(10)) : e0
+                if a.isEmpty && b.isEmpty { return "" }
+                return a == b ? a : "\(a) 至 \(b)"
+            }()
+            detailRows = [
+                ("调度厂区：", Net.str(comp, "sname")),
+                ("调度类型：", Net.str(be, "typeName")),
+                ("调度等级：", lvl),
+                ("调度日期：", d0),
+            ]
 
             var out: [FlowStep] = []
             for r in Net.array(res["businessUnitRecords"]) {
@@ -361,38 +406,72 @@ struct DispatchScreen: View {
         lastRefresh = f.string(from: Date())
     }
 
+    /// 严格照 item_schedule_sheet.xml
+    /// 外层：左右 5、上下 3；内层：白底圆角 5、蓝色 0.5 描边、padding 5
     private func card(_ o: DispatchOrder, highlight: Bool) -> some View {
         NavigationLink {
             DispatchDetailScreen(orderId: o.id, previewContents: o.contents)
         } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Rectangle()
-                    .fill(highlight ? C.blue : C.sub.opacity(0.35))
-                    .frame(width: 4)
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text(o.typeName.isEmpty ? "调度单" : o.typeName)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(C.blue)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(C.blue.opacity(0.1)).cornerRadius(4)
-                        Spacer()
-                        StatusPill(text: o.statusText, color: o.statusColor)
-                    }
-                    Text(o.contents.isEmpty ? "（无内容）" : o.contents)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(C.text).lineLimit(3)
+            VStack(alignment: .leading, spacing: 0) {
+                // 第一行：流程图标 28×28 + 类型 + 状态
+                HStack(spacing: 0) {
+                    Image("moudle_flow")
+                        .resizable().scaledToFit()
+                        .padding(.leading, 10)
+                        .padding(.vertical, 6)
+                        .frame(width: 28, height: 28)
+
+                    Text(o.typeName.isEmpty ? "调度单" : o.typeName)
+                        .font(.system(size: 14))
+                        .foregroundColor(.black)
+                        .padding(.leading, 8).padding(.trailing, 8)
+                        .padding(.vertical, 5)
+                        .frame(height: 30, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack {
-                        Text(o.dateText).font(.system(size: 11)).foregroundColor(C.sub)
-                        Spacer()
-                        Text(o.company).font(.system(size: 11)).foregroundColor(C.sub)
-                    }
+
+                    Text(o.statusText)
+                        .font(.system(size: 14))
+                        .foregroundColor(.black)
+                        .padding(.leading, 10).padding(.trailing, 8)
+                        .padding(.vertical, 5)
                 }
+
+                // 第二行：目标公司 14sp
+                Text(o.company)
+                    .font(.system(size: 14)).foregroundColor(.black)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // 第三行：调度内容 16sp
+                Text(o.contents)
+                    .font(.system(size: 16)).foregroundColor(.black)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // 第四行：目标人 14sp
+                Text(o.manText)
+                    .font(.system(size: 14)).foregroundColor(.black)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // 第五行：日期 14sp
+                Text(o.dateText)
+                    .font(.system(size: 14)).foregroundColor(.black)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(11).background(Color.white).cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8)
-                .stroke(highlight ? C.blue.opacity(0.35) : Color.clear, lineWidth: 1))
+            .padding(5)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.white)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color(hex: 0x2E59F7), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
         }
         .buttonStyle(.plain)
     }
@@ -418,21 +497,82 @@ struct DispatchDetailScreen: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                // 任务内容
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("调度内容").font(.caption).foregroundColor(C.sub)
-                        Spacer()
-                        if !store.status.isEmpty {
-                            StatusPill(text: store.status == "1" ? "进行中" : "已完成",
-                                       color: store.status == "1" ? .orange : .green)
+                // ── 详情卡：严格照 activity_schedule_sheet_detail.xml ──
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("*详情")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(hex: 0xA3A1A1))
+                        .padding(.leading, 10)
+                        .padding(.top, 10)
+
+                    VStack(spacing: 0) {
+                        // 四行：label 14sp #757778（宽 1.3 : 3），value 14sp 黑，下划 0.3 #DADDE2
+                        ForEach(Array(store.detailRows.enumerated()), id: \.offset) { _, row in
+                            HStack(spacing: 0) {
+                                Text(row.0)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: 0x757778))
+                                    .padding(.leading, 10)
+                                    .frame(height: 40, alignment: .leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .layoutPriority(1.3)
+                                VStack(spacing: 0) {
+                                    Text(row.1)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.black)
+                                        .padding(.leading, 8)
+                                        .frame(height: 34.5, alignment: .leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Rectangle().fill(Color(hex: 0xDADDE2)).frame(height: 0.3)
+                                }
+                                .padding(.trailing, 10)
+                                .layoutPriority(3)
+                            }
                         }
+
+                        // 调度内容
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("调度内容:")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(hex: 0x757778))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(store.contents.isEmpty ? previewContents : store.contents)
+                                .font(.system(size: 14))
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(6)
+                                .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                                .padding(.horizontal, 8)
+                        }
+
+                        // 审核人
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("审核人:")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(hex: 0x757778))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(store.steps.last?.userName ?? "")
+                                .font(.system(size: 14))
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(6)
+                                .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                                .padding(.horizontal, 8)
+                        }
+                        .padding(.bottom, 4)
                     }
-                    Text(store.contents.isEmpty ? previewContents : store.contents)
-                        .font(.system(size: 16, weight: .medium)).foregroundColor(C.text)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(5)
+                    .padding(8)
                 }
-                .padding(14).background(Color.white).cornerRadius(10)
+                .padding(.horizontal, 8)
+                .overlay(
+                    Rectangle().stroke(Color(hex: 0x43B3FF), lineWidth: 1)
+                )
+                .padding(8)
 
                 // 拍照区
                 VStack(spacing: 10) {
