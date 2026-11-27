@@ -276,6 +276,7 @@ struct PatrolDetailScreen: View {
     @ObservedObject var store: PatrolStore
     let shiftId: String
     @State private var showRemarks = false
+    @State private var showImages = false
 
     private var shift: Shift? { store.shifts.first { $0.id == shiftId } }
     private let cols = [GridItem(.flexible(), spacing: 0), GridItem(.flexible(), spacing: 0)]
@@ -348,7 +349,10 @@ struct PatrolDetailScreen: View {
             // 底部操作栏（62dp）
             HStack(spacing: 0) {
                 bottomItem("异常上报", "moudle_patrol_task_sub_fault")
-                bottomItem("图片补充", "add_iv")
+                Button { showImages = true } label: {
+                    bottomItem("图片补充", "add_iv")
+                }
+                .buttonStyle(.plain)
                 Button { showRemarks = true } label: {
                     bottomItem("填写备注", "moudle_patrol_task_remark")
                 }
@@ -375,6 +379,12 @@ struct PatrolDetailScreen: View {
             .background(Color.white)
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showImages) {
+            NavigationView {
+                RemarkImageScreen(recordId: s?.id ?? "", pointId: "")
+                    .environmentObject(app)
+            }
+        }
         .sheet(isPresented: $showRemarks) {
             NavigationView {
                 TaskRemarksScreen(recordId: s?.id ?? "", pointId: "")
