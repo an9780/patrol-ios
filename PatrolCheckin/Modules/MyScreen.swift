@@ -9,6 +9,7 @@ struct MyScreen: View {
     @State private var showKnowledge = false
     @State private var showSchedule = false
     @State private var showSettings = false
+    @State private var showChangePwd = false
 
     private let titleColor = Color(hex: 0x373A3D)
     private let lineColor = Color(hex: 0xE5E5E5)
@@ -62,6 +63,8 @@ struct MyScreen: View {
                     VStack(spacing: 0) {
                         menuRow("新建调度", "moudle_doc", showArrow: true) { showSchedule = true }
                         divider
+                        menuRow("修改密码", "moudle_switch", showArrow: true) { showChangePwd = true }
+                        divider
                         menuRow("设置", "moudle_switch", showArrow: true) { showSettings = true }
                         divider
                         menuRow("关于软件", "moudle_about", showArrow: true) { showAbout = true }
@@ -95,6 +98,9 @@ struct MyScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showChangePwd) {
+            NavigationView { ChangePasswordScreen().environmentObject(app) }
+        }
         .sheet(isPresented: $showSettings) {
             NavigationView { SettingsScreen().environmentObject(app) }
         }
