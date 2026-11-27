@@ -127,22 +127,6 @@ struct MaintainScreen: View {
 
 // MARK: - 报警模块
 
-struct AlarmScreen: View {
-    @EnvironmentObject var app: AppState
-
-    var body: some View {
-        NavigationView {
-            GenericListScreen(
-                title: "实时报警",
-                path: "SIPAIIS_DataCenter/work/scadaAlarm/getAlarmListByCache.do",
-                buildParams: {
-                    ["unitId": app.unit, "sort": "insdt", "order": "desc"]
-                }
-            )
-        }
-        .navigationViewStyle(.stack)
-    }
-}
 
 // MARK: - 更多
 
