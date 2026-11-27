@@ -254,18 +254,29 @@ struct KnowledgeDocScreen: View {
                 EmptyHint(text: error ?? "该分类下暂无文档")
             } else {
                 LoadableList(items: rows, empty: "暂无文档") { r in
-                    HStack(spacing: 10) {
-                        Image(systemName: "doc.text").foregroundColor(C.blue)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(r.title).font(.system(size: 15)).foregroundColor(C.text)
-                                .lineLimit(2)
-                            if !r.subtitle.isEmpty {
-                                Text(r.subtitle).font(.system(size: 11)).foregroundColor(C.sub)
-                            }
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 0) {
+                            Image("icon_statement")
+                                .resizable().scaledToFit()
+                                .padding(2).frame(width: 20, height: 20)
+                            Text(r.status)
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: 0x9A9B9C))
+                                .frame(height: 20, alignment: .center)
+                            Spacer()
                         }
-                        Spacer()
+                        .frame(height: 20)
+                        Text(r.title)
+                            .font(.system(size: 16)).foregroundColor(.black)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(r.subtitle)
+                            .font(.system(size: 13)).foregroundColor(C.grayText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(11).background(Color.white).cornerRadius(6)
+                    .padding(5)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(Color.white))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
                 }
             }
         }
