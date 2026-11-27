@@ -5,12 +5,16 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+concurrency:
+  group: ios-build
+  cancel-in-progress: true
+
 env:
   HAS_SIGNING: ${{ secrets.P12_BASE64 != '' && secrets.PROFILE_BASE64 != '' }}
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-latest
     timeout-minutes: 45
 
     steps:
