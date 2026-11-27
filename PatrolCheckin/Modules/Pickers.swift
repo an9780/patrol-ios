@@ -272,19 +272,7 @@ struct PointListBySection: View {
                     NavigationLink {
                         PointHistoryScreen(pointId: r.id, pointName: r.title)
                     } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "dot.radiowaves.left.and.right").foregroundColor(C.blue)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(r.title).font(.system(size: 14)).foregroundColor(C.text)
-                                if !r.subtitle.isEmpty {
-                                    Text(r.subtitle).font(.system(size: 11)).foregroundColor(C.sub)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                                .font(.system(size: 12)).foregroundColor(C.sub)
-                        }
-                        .padding(11).background(Color.white).cornerRadius(6)
+                        MeasurePointRow(name: r.title, value: r.subtitle)
                     }
                     .buttonStyle(.plain)
                 }
