@@ -1,17 +1,41 @@
 import SwiftUI
 
-// MARK: - 配色（照原版）
+// MARK: - 配色（全部取自 APK res/values/colors.xml）
 
 enum C {
-    static let blue = Color(red: 0.13, green: 0.25, blue: 0.78)
-    static let blueDark = Color(red: 0.10, green: 0.19, blue: 0.62)
-    static let greenBar = Color(red: 0.30, green: 0.78, blue: 0.55)
-    static let cardBg = Color(red: 0.90, green: 0.97, blue: 0.98)
-    static let cardBorder = Color(red: 0.72, green: 0.90, blue: 0.93)
-    static let cyan = Color(red: 0.42, green: 0.75, blue: 0.83)
-    static let text = Color(red: 0.11, green: 0.13, blue: 0.17)
-    static let sub = Color(red: 0.46, green: 0.50, blue: 0.56)
-    static let bg = Color(red: 0.96, green: 0.97, blue: 0.99)
+    static let bar = Color(hex: 0x2748F1)          // bar_color / task_top_blue / pro_task_tab_sel
+    static let blue = Color(hex: 0x419DE4)         // blue / colorPrimary
+    static let gradStart = Color(hex: 0x4C76F8)    // bg_patrol_task_detail 渐变起
+    static let gradEnd = Color(hex: 0x2541EF)      // 渐变止
+    static let pointUncom = Color(hex: 0xF9F9F9)   // bg_patrol_point_uncom
+    static let pointCom = Color(hex: 0xE2FFFF)     // bg_patrol_point_com
+    static let pointArea = Color(hex: 0x828585)    // bg_patrol_point_area
+    static let errorYellow = Color(hex: 0xFF8400)  // error_yellow
+    static let grayText = Color(hex: 0xA8A8A8)     // gray_text
+    static let tabSel = Color(hex: 0x2748F1)       // pro_task_tab_sel
+    static let tabUnsel = Color(hex: 0x797979)     // pro_task_tab_unsel
+    static let doingBg = Color(hex: 0xE5F0FF)      // bg_task_doing
+    static let tabTextGray = Color(hex: 0xD4DAE0)  // tab_text_gray
+    static let line = Color(hex: 0xE5E5E5)
+    static let text = Color.black
+    static let sub = Color(hex: 0x666666)
+    static let bg = Color(hex: 0xF6F6F6)
+    // 兼容旧代码里的名字
+    static let cyan = Color(hex: 0x419DE4)
+    static let greenBar = Color(hex: 0x2748F1)
+    static let cardBg = Color(hex: 0xF9F9F9)
+    static let cardBorder = Color(hex: 0xE5E5E5)
+    static let blueDark = Color(hex: 0x2541EF)
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(.sRGB,
+                  red: Double((hex >> 16) & 0xFF) / 255,
+                  green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255,
+                  opacity: 1)
+    }
 }
 
 // MARK: - 全局状态
@@ -25,6 +49,7 @@ final class AppState: ObservableObject {
     @Published var date: String
     @Published var busy = false
     @Published var toast: String?
+    @Published var tab: Int = 2          // 默认「生产监视」
 
     init() {
         let d = UserDefaults.standard
@@ -94,88 +119,234 @@ struct RootView: View {
     }
 }
 
-// MARK: - 登录页
+// MARK: - 登录页（照 activity_login.xml 还原）
 
 struct LoginView: View {
     @EnvironmentObject var app: AppState
     @State private var password = ""
+    @State private var isInnerNet = true
 
     var body: some View {
-        ZStack {
-            C.bg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                LinearGradient(colors: [C.blue, C.blueDark], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 190)
-                    .overlay {
-                        VStack(spacing: 6) {
-                            Text("生产巡检").font(.title2).bold().foregroundColor(.white)
-                            Text("SIPAIIS · 移动巡检").font(.caption)
-                                .foregroundColor(.white.opacity(0.75))
+        GeometryReader { geo in
+            ZStack {
+                Image("moudle_ic_login_bg")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    // Logo：295x100，padding 18，marginTop 70
+                    Image("moudle_ipatrol_logo")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(18)
+                        .frame(width: 295, height: 100)
+                        .padding(.top, 70)
+
+                    // 输入区：左右 25，top 20
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            Image("moudle_icon_man")
+                                .resizable().scaledToFit()
+                                .padding(8).frame(width: 34, height: 34)
+                            TextField("", text: $app.user,
+                                      prompt: Text("请输入用户名").foregroundColor(.white))
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                                .padding(.horizontal, 15)
+                                .frame(height: 34)
                         }
+                        .frame(width: 260)
+
+                        Rectangle().fill(C.line).frame(width: 250, height: 0.3)
+
+                        HStack(spacing: 0) {
+                            Image("moudle_icon_lock")
+                                .resizable().scaledToFit()
+                                .padding(8).frame(width: 34, height: 34)
+                            SecureField("", text: $password,
+                                        prompt: Text("请输入密码").foregroundColor(.white))
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 15)
+                                .frame(height: 34)
+                            Image("moudle_eye")
+                                .resizable().scaledToFit()
+                                .padding(8).frame(width: 34, height: 34)
+                        }
+                        .frame(width: 260)
+                        .padding(.top, 25)
+
+                        Rectangle().fill(C.line).frame(width: 250, height: 0.3)
                     }
+                    .padding(.horizontal, 25)
+                    .padding(.top, 20)
 
-                VStack(spacing: 14) {
-                    input("账号", $app.user, secure: false)
-                    input("密码", $password, secure: true)
-                    input("单位", $app.unit, secure: false)
+                    // 内网/外网
+                    HStack(spacing: 17) {
+                        HStack(spacing: 4) {
+                            Text(isInnerNet ? "内网" : "外网")
+                                .font(.system(size: 12)).foregroundColor(.white)
+                            Toggle("", isOn: $isInnerNet)
+                                .labelsHidden().scaleEffect(0.75)
+                        }
+                        .frame(width: 80, alignment: .leading)
+                        Spacer()
+                    }
+                    .frame(width: 260)
+                    .padding(.top, 15)
+                    .frame(height: 40)
 
+                    // 登录
                     Button {
                         Task { await app.login(password: password) }
                     } label: {
-                        HStack {
-                            Text("登 录").font(.headline)
-                            if app.busy { ProgressView().tint(.white) }
+                        HStack(spacing: 6) {
+                            if app.busy { ProgressView().tint(.white).scaleEffect(0.8) }
+                            Text("登录").font(.system(size: 15)).foregroundColor(.white)
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .background(C.blue).foregroundColor(.white).cornerRadius(8)
+                        .frame(width: 250, height: 38)
+                        .background(C.blue)
+                        .cornerRadius(5)
                     }
-                    .disabled(app.busy || password.isEmpty)
-                    .opacity(password.isEmpty ? 0.55 : 1)
+                    .padding(.top, 22)
+
+                    // 设置
+                    Button {
+                    } label: {
+                        Text("设置")
+                            .font(.system(size: 15)).foregroundColor(.white)
+                            .frame(width: 250, height: 38)
+                            .background(Color.white.opacity(0.5))
+                            .cornerRadius(3)
+                    }
+                    .padding(.top, 12)
+
+                    Spacer()
+
+                    Text("本平台为互联网非涉密平台，严禁处理、传输国家秘密")
+                        .font(.system(size: 22))
+                        .foregroundColor(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(40)
+
+                    Spacer().frame(height: 0)
+
+                    // 版本 + 备案号
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("v2.77")
+                            .font(.system(size: 13)).foregroundColor(.white)
+                        Text("ICP备案/许可证号:粤ICP备2022148356号")
+                            .font(.system(size: 10)).foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 15)
+                    .padding(.bottom, 10)
                 }
-                .padding(20).background(Color.white).cornerRadius(12)
-                .padding(.horizontal, 20).offset(y: -40)
-
-                Spacer()
             }
-            .ignoresSafeArea(edges: .top)
-        }
-    }
-
-    @ViewBuilder
-    private func input(_ label: String, _ text: Binding<String>, secure: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.caption).foregroundColor(C.sub)
-            Group {
-                if secure { SecureField(label, text: text) }
-                else { TextField(label, text: text).autocapitalization(.none)
-                        .disableAutocorrection(true) }
-            }
-            .padding(11)
-            .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-            .overlay(RoundedRectangle(cornerRadius: 7)
-                .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
         }
     }
 }
 
-// MARK: - 主框架
+// MARK: - 主框架（照 activity_main_app.xml 还原：4 个 Tab，50dp 高）
+
+struct TabItem {
+    let title: String
+    let iconFull: String
+    let iconEmpty: String
+}
 
 struct MainTabView: View {
     @EnvironmentObject var app: AppState
 
+    private let tabs = [
+        TabItem(title: "主页", iconFull: "moudle_tab_main_full", iconEmpty: "moudle_tab_main_empty"),
+        TabItem(title: "异常处理", iconFull: "moudle_tab_fault_full", iconEmpty: "moudle_tab_fault_empty"),
+        TabItem(title: "生产监视", iconFull: "moudle_tab_pro_full", iconEmpty: "moudle_tab_pro_empty"),
+        TabItem(title: "我的", iconFull: "moudle_tab_self_full", iconEmpty: "moudle_tab_self_empty"),
+    ]
+
     var body: some View {
-        TabView {
-            PatrolScreen().tabItem { Label("巡检", systemImage: "checklist") }
-            FaultScreen().tabItem { Label("故障", systemImage: "exclamationmark.triangle") }
-            MaintainScreen().tabItem { Label("维保", systemImage: "wrench.and.screwdriver") }
-            AlarmScreen().tabItem { Label("报警", systemImage: "bell") }
-            MoreScreen().tabItem { Label("更多", systemImage: "ellipsis.circle") }
+        VStack(spacing: 0) {
+            Group {
+                switch app.tab {
+                case 0: HomeScreen()
+                case 1: FaultScreen()
+                case 3: MoreScreen()
+                default: PatrolScreen()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            HStack(spacing: 0) {
+                ForEach(0..<4) { i in
+                    Button {
+                        app.tab = i
+                    } label: {
+                        VStack(spacing: 0) {
+                            Image(app.tab == i ? tabs[i].iconFull : tabs[i].iconEmpty)
+                                .resizable().scaledToFit()
+                                .frame(height: 26)
+                                .padding(.horizontal, 4)
+                            Text(tabs[i].title)
+                                .font(.system(size: 11))
+                                .foregroundColor(app.tab == i ? .black : C.tabTextGray)
+                                .frame(height: 18)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(height: 50)
+            .background(Color.white)
         }
-        .accentColor(C.blue)
     }
 }
 
-// MARK: - 通用小组件
+// MARK: - 主页
+
+struct HomeScreen: View {
+    @EnvironmentObject var app: AppState
+
+    private let entries: [(String, String, Int)] = [
+        ("生产监视", "checklist", 2),
+        ("异常处理", "exclamationmark.triangle", 1),
+        ("我的", "person", 3),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            BlueHeader(title: "主页", subtitle: app.caption)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()),
+                                    GridItem(.flexible())], spacing: 12) {
+                    ForEach(entries, id: \.0) { e in
+                        Button { app.tab = e.2 } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: e.1)
+                                    .font(.system(size: 26)).foregroundColor(C.bar)
+                                Text(e.0).font(.system(size: 13)).foregroundColor(C.text)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 22)
+                            .background(Color.white).cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(12)
+            }
+            .background(C.bg)
+        }
+    }
+}
+
+// MARK: - 通用组件
 
 struct BlueHeader: View {
     let title: String
@@ -183,18 +354,17 @@ struct BlueHeader: View {
     var trailing: AnyView? = nil
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
-                if let s = subtitle {
-                    Text(s).font(.system(size: 12)).foregroundColor(.white.opacity(0.8))
-                }
+        ZStack {
+            C.bar
+            Text(title)
+                .font(.system(size: 15)).foregroundColor(.white)
+            HStack {
+                Spacer()
+                if let t = trailing { t }
             }
-            Spacer()
-            if let t = trailing { t }
+            .padding(.trailing, 12)
         }
-        .padding(.horizontal, 16).padding(.vertical, 13)
-        .background(C.blue)
+        .frame(height: 50)
     }
 }
 
@@ -203,11 +373,12 @@ struct StatusPill: View {
     let color: Color
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 12))
             .foregroundColor(color)
-            .padding(.horizontal, 9).padding(.vertical, 3)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
             .background(color.opacity(0.12))
-            .cornerRadius(10)
+            .cornerRadius(11)
     }
 }
 
@@ -215,8 +386,8 @@ struct EmptyHint: View {
     let text: String
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "tray").font(.largeTitle).foregroundColor(C.sub.opacity(0.5))
-            Text(text).font(.subheadline).foregroundColor(C.sub)
+            Image(systemName: "tray").font(.largeTitle).foregroundColor(C.grayText)
+            Text(text).font(.subheadline).foregroundColor(C.grayText)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 60)
     }
@@ -235,7 +406,7 @@ struct LoadableList<Item: Identifiable, Row: View>: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: 0) {
                 if items.isEmpty {
                     EmptyHint(text: empty)
                 } else {
