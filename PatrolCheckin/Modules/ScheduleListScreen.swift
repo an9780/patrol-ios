@@ -70,7 +70,13 @@ struct ScheduleListScreen: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(store.rows.enumerated()), id: \.offset) { _, d in
-                            card(d)
+                            NavigationLink {
+                                ScheduleDetailScreen(scheduleId: Net.str(d, "id"))
+                                    .environmentObject(app)
+                            } label: {
+                                card(d)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
