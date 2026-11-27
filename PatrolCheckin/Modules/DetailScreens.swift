@@ -126,6 +126,11 @@ final class DetailStore: ObservableObject {
         loading = false
     }
 
+    func rawString(_ key: String) -> String {
+        guard let v = raw[key] else { return "" }
+        return stringify(v)
+    }
+
     func act(path: String, params: [String: String], json: Bool = false) async -> Bool {
         acting = true
         actMessage = nil
@@ -154,54 +159,234 @@ struct FaultDetailScreen: View {
     let abnormalId: String
 
     @StateObject private var store = DetailStore()
-    @State private var result = ""
-    @State private var photos: [UIImage] = []
+    @State private var planMoney = ""
+    @State private var planDate = Date()
+    @State private var receiver = ""
+    @State private var faultType = ""
+    @State private var handleWay = ""
+    @State private var busy = false
+    @State private var msg: String?
+
+    private let gray01 = Color(hex: 0xDADDE2)
+    private let blue = Color(hex: 0x419DE4)
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if store.loading {
-                    ProgressView().padding(.top, 60)
-                } else if !store.fields.isEmpty {
-                    DetailFieldList(fields: store.fields)
-                } else {
-                    EmptyHint(text: store.error ?? "没有详情数据")
-                }
-
-                // 处理
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("处理结果").font(.system(size: 12)).foregroundColor(C.sub)
-                    TextEditor(text: $result)
-                        .font(.system(size: 15)).frame(minHeight: 90).padding(8)
-                        .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-                        .overlay(RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-                        .cornerRadius(7)
-                    PhotoStrip(photos: $photos)
-                    Button {
-                        Task { await handle() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if store.acting { ProgressView().tint(.white) }
-                            Text(store.acting ? "提交中…" : "提交处理")
-                                .font(.system(size: 15, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .background(C.blue).foregroundColor(.white).cornerRadius(9)
-                    }
-                    .disabled(store.acting || result.isEmpty || abnormalId.isEmpty)
-
-                    if let m = store.actMessage {
-                        Text(m).font(.caption).foregroundColor(.red)
-                    }
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+        VStack(spacing: 0) {
+            // 标题栏
+            ZStack {
+                LinearGradient(colors: [C.gradStart, C.gradEnd],
+                               startPoint: .leading, endPoint: .trailing)
+                Text("异常详情").font(.system(size: 15)).foregroundColor(.white)
             }
-            .padding(12)
+            .frame(height: 50)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    // ── 详情区：左右 10，上下 5 ──
+                    VStack(spacing: 0) {
+                        // 所属厂区（带定位图标，权重 1.2 : 3）
+                        HStack(spacing: 0) {
+                            Text("所属厂区:")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1.2)
+                            Text(store.rawString("companyName"))
+                                .font(.system(size: 16))
+                                .padding(.leading, 15)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                            Image("moudle_location")
+                                .resizable().scaledToFit()
+                                .frame(width: 30, height: 35)
+                                .padding(.trailing, 10)
+                        }
+                        thinDivider(inset: false)
+
+                        row("工 艺 段:", store.rawString("processSectionName"))
+                        thinDivider(inset: false)
+
+                        row("上报时间:", store.rawString("insdt"))
+                        row("上报人:", store.rawString("insuserName"))
+                        thinDivider(inset: false)
+
+                        // 异常描述
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("异常描述")
+                                .font(.system(size: 16))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .frame(height: 30)
+                            Text(store.rawString("abnormityDescription"))
+                                .font(.system(size: 15))
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        Rectangle().fill(gray01).frame(height: 0.3)
+                            .padding(.horizontal, 20)
+
+                        // 备注
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("备注")
+                                .font(.system(size: 16))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .frame(height: 30)
+                            Text(store.rawString("remark"))
+                                .font(.system(size: 15))
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        // 故障设备
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("故障设备")
+                                .font(.system(size: 16))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .frame(height: 30)
+                            Rectangle().fill(gray01).frame(height: 0.3)
+                                .padding(.horizontal, 20)
+                            Text(store.rawString("equipmentName"))
+                                .font(.system(size: 16))
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.leading, 10).padding(.trailing, 10)
+                    .padding(.vertical, 5)
+
+                    // ── 待办区：生成缺陷 ──
+                    VStack(spacing: 0) {
+                        VStack(spacing: 0) {
+                            Text("生成缺陷")
+                                .font(.system(size: 16))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .frame(height: 35)
+                            Rectangle().fill(gray01).frame(height: 0.3)
+                        }
+
+                        // 处理方式
+                        HStack(spacing: 0) {
+                            Text("处理方式:")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1.5)
+                            Button { } label: {
+                                HStack {
+                                    Text(handleWay.isEmpty ? "请选择" : handleWay)
+                                        .font(.system(size: 16))
+                                        .foregroundColor(handleWay.isEmpty ? C.sub : .black)
+                                    Spacer()
+                                    Image("iv_down").resizable().scaledToFit()
+                                        .padding(8).frame(width: 30, height: 35)
+                                        .padding(.trailing, 30)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
+                            .layoutPriority(3)
+                        }
+                        Rectangle().fill(gray01).frame(height: 0.3).padding(.horizontal, 20)
+
+                        // 计划完成日期
+                        HStack(spacing: 0) {
+                            Text("计划完成日期:")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1.5)
+                            DatePicker("", selection: $planDate, displayedComponents: [.date])
+                                .labelsHidden()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                        }
+                        Rectangle().fill(gray01).frame(height: 0.3).padding(.horizontal, 20)
+
+                        // 计划费用
+                        HStack(spacing: 0) {
+                            Text("计划费用:")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1.5)
+                            TextField("0.0", text: $planMoney)
+                                .font(.system(size: 16))
+                                .keyboardType(.decimalPad)
+                                .padding(.leading, 15)
+                                .frame(height: 35)
+                                .frame(maxWidth: .infinity)
+                                .layoutPriority(3)
+                        }
+                        Rectangle().fill(gray01).frame(height: 0.3).padding(.horizontal, 20)
+
+                        // 接收人员 + 选本人
+                        HStack(spacing: 0) {
+                            Text("接收人员:")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1.5)
+                            Text(receiver.isEmpty ? "" : receiver)
+                                .font(.system(size: 16))
+                                .padding(.leading, 15)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                            Button("选本人") { receiver = app.caption }
+                                .font(.system(size: 14)).foregroundColor(.white)
+                                .frame(width: 80, height: 30)
+                                .background(blue).cornerRadius(3)
+                                .padding(.trailing, 15)
+                        }
+                        Rectangle().fill(gray01).frame(height: 0.3).padding(.horizontal, 20)
+
+                        // 故障类型
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("故障类型")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(height: 30)
+                            Rectangle().fill(gray01).frame(height: 0.3).padding(.horizontal, 20)
+                            Text(faultType.isEmpty ? "点击选择故障条目" : faultType)
+                                .font(.system(size: 16))
+                                .foregroundColor(faultType.isEmpty ? C.sub : .black)
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.bottom, 10)
+
+                        // 提交
+                        Button {
+                            Task { await submit() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if busy { ProgressView().tint(.white) }
+                                Text(busy ? "提交中…" : "提 交")
+                                    .font(.system(size: 19)).foregroundColor(.white)
+                            }
+                            .frame(maxWidth: .infinity).frame(height: 40)
+                            .background(blue).cornerRadius(3)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 20)
+
+                        if let m = msg {
+                            Text(m).font(.system(size: 12)).foregroundColor(.red)
+                                .padding(.horizontal, 10).padding(.bottom, 10)
+                        }
+                    }
+                    .padding(.leading, 10).padding(.trailing, 10)
+                    .padding(.vertical, 5)
+                }
+            }
+            .background(C.bg)
         }
-        .background(C.bg)
-        .navigationTitle("故障详情")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .task {
             if !abnormalId.isEmpty {
                 await store.load(
@@ -211,24 +396,41 @@ struct FaultDetailScreen: View {
         }
     }
 
-    private func handle() async {
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .font(.system(size: 16))
+                .padding(.leading, 10)
+                .frame(height: 35, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(value)
+                .font(.system(size: 16))
+                .padding(.leading, 15)
+                .frame(height: 35, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(3)
+        }
+    }
+
+    private func thinDivider(inset: Bool) -> some View {
+        Rectangle().fill(gray01).frame(height: 0.3)
+    }
+
+    private func submit() async {
+        busy = true
+        msg = nil
         let ok = await store.act(
             path: "SIPAIIS_Equipment/maintenance/updateDetailNoFlow.do",
             params: ["id": abnormalId,
                      "status": "1",
-                     "problemresult": result,
+                     "problemresult": store.rawString("abnormityDescription"),
                      "solvetime": DateFormatter.localizedString(
                         from: Date(), dateStyle: .short, timeStyle: .short)])
-        if ok {
-            app.show("处理已提交 ✓")
-            await store.load(
-                path: "SIPAIIS_Equipment/maintenance/getMaintenanceDetailsByAbnormal.do",
-                params: ["abnormalId": abnormalId])
-        }
+        busy = false
+        if ok { app.show("处理已提交 ✓") }
+        else { msg = store.actMessage }
     }
 }
-
-// MARK: - 故障审核
 
 struct FaultAuditScreen: View {
     @EnvironmentObject var app: AppState
