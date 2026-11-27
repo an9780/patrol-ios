@@ -162,10 +162,12 @@ struct FaultDetailScreen: View {
     @State private var planMoney = ""
     @State private var planDate = Date()
     @State private var receiver = ""
+    @State private var pickedUserId = ""
     @State private var faultType = ""
     @State private var handleWay = ""
     @State private var busy = false
     @State private var msg: String?
+    @State private var showUserPicker = false
 
     private let gray01 = Color(hex: 0xDADDE2)
     private let blue = Color(hex: 0x419DE4)
@@ -331,12 +333,18 @@ struct FaultDetailScreen: View {
                                 .frame(height: 35, alignment: .center)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .layoutPriority(1.5)
-                            Text(receiver.isEmpty ? "" : receiver)
-                                .font(.system(size: 16))
-                                .padding(.leading, 15)
-                                .frame(height: 35, alignment: .center)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .layoutPriority(3)
+                            Button {
+                                showUserPicker = true
+                            } label: {
+                                Text(receiver.isEmpty ? "点击选择" : receiver)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(receiver.isEmpty ? C.sub : .black)
+                                    .padding(.leading, 15)
+                                    .frame(height: 35, alignment: .center)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            .layoutPriority(3)
                             Button("选本人") { receiver = app.caption }
                                 .font(.system(size: 14)).foregroundColor(.white)
                                 .frame(width: 80, height: 30)
@@ -387,6 +395,12 @@ struct FaultDetailScreen: View {
             .background(C.bg)
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showUserPicker) {
+            UserPickerScreen(multiple: false) { picked in
+                if let u = picked.first { receiver = u.name; pickedUserId = u.id }
+            }
+            .environmentObject(app)
+        }
         .task {
             if !abnormalId.isEmpty {
                 await store.load(
