@@ -53,10 +53,16 @@ struct HistoryListScreen: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(store.rows.enumerated()), id: \.offset) { _, d in
-                            HistoryTaskRow(
-                                id: Net.str(d, "id"),
-                                status: statusText(Net.str(d, "status")),
-                                fields: fields(d))
+                            NavigationLink {
+                                HistoryDetailScreen(recordId: Net.str(d, "id"))
+                                    .environmentObject(app)
+                            } label: {
+                                HistoryTaskRow(
+                                    id: Net.str(d, "id"),
+                                    status: statusText(Net.str(d, "status")),
+                                    fields: fields(d))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, 4)
