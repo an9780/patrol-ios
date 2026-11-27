@@ -311,40 +311,6 @@ struct MainTabView: View {
 
 // MARK: - 主页
 
-struct HomeScreen: View {
-    @EnvironmentObject var app: AppState
-
-    private let entries: [(String, String, Int)] = [
-        ("生产监视", "checklist", 2),
-        ("异常处理", "exclamationmark.triangle", 1),
-        ("我的", "person", 3),
-    ]
-
-    var body: some View {
-        VStack(spacing: 0) {
-            BlueHeader(title: "主页", subtitle: app.caption)
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()),
-                                    GridItem(.flexible())], spacing: 12) {
-                    ForEach(entries, id: \.0) { e in
-                        Button { app.tab = e.2 } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: e.1)
-                                    .font(.system(size: 26)).foregroundColor(C.bar)
-                                Text(e.0).font(.system(size: 13)).foregroundColor(C.text)
-                            }
-                            .frame(maxWidth: .infinity).padding(.vertical, 22)
-                            .background(Color.white).cornerRadius(8)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(12)
-            }
-            .background(C.bg)
-        }
-    }
-}
 
 // MARK: - 通用组件
 
