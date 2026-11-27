@@ -342,17 +342,7 @@ struct EquipmentSearchScreen: View {
                 EmptyHint(text: error ?? "输入设备名搜索")
             } else {
                 LoadableList(items: rows, empty: "无结果") { r in
-                    HStack(spacing: 10) {
-                        Image(systemName: "square.stack.3d.up").foregroundColor(C.blue)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(r.title).font(.system(size: 15)).foregroundColor(C.text)
-                            if !r.subtitle.isEmpty {
-                                Text(r.subtitle).font(.system(size: 11)).foregroundColor(C.sub)
-                            }
-                        }
-                        Spacer()
-                    }
-                    .padding(11).background(Color.white).cornerRadius(6)
+                    SimpleTextRow(text: r.title)
                 }
             }
         }
