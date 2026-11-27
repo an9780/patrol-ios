@@ -10,6 +10,7 @@ struct MyScreen: View {
     @State private var showSchedule = false
     @State private var showSettings = false
     @State private var showChangePwd = false
+    @State private var showEndpoints = false
 
     private let titleColor = Color(hex: 0x373A3D)
     private let lineColor = Color(hex: 0xE5E5E5)
@@ -67,6 +68,8 @@ struct MyScreen: View {
                         divider
                         menuRow("设置", "moudle_switch", showArrow: true) { showSettings = true }
                         divider
+                        menuRow("接口总览", "moudle_doc", showArrow: true) { showEndpoints = true }
+                        divider
                         menuRow("关于软件", "moudle_about", showArrow: true) { showAbout = true }
                         divider
                         menuRow("知识库", "moudle_doc", showArrow: true) { showKnowledge = true }
@@ -98,6 +101,9 @@ struct MyScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showEndpoints) {
+            NavigationView { EndpointListScreen().environmentObject(app) }
+        }
         .sheet(isPresented: $showChangePwd) {
             NavigationView { ChangePasswordScreen().environmentObject(app) }
         }
