@@ -276,7 +276,7 @@ struct MainTabView: View {
                 switch app.tab {
                 case 0: HomeScreen()
                 case 1: FaultScreen()
-                case 3: MoreScreen()
+                case 3: MyScreen()
                 default: PatrolScreen()
                 }
             }
