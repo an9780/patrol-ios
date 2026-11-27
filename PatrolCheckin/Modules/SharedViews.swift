@@ -64,3 +64,18 @@ struct PhotoStrip: View {
         .buttonStyle(.plain)
     }
 }
+
+
+// MARK: - 指定角圆角（兼容 iOS 15）
+
+struct RoundCorners: Shape {
+    var corners: UIRectCorner
+    var radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(roundedRect: rect,
+                                byRoundingCorners: corners,
+                                cornerRadii: CGSize(width: radius, height: radius))
+        return Path(path.cgPath)
+    }
+}
