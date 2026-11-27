@@ -545,31 +545,100 @@ struct MaintainDetailScreen: View {
     @StateObject private var store = DetailStore()
     @State private var showFill = false
 
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if store.loading {
-                    ProgressView().padding(.top, 60)
-                } else if !store.fields.isEmpty {
-                    DetailFieldList(fields: store.fields)
-                } else {
-                    EmptyHint(text: store.error ?? "没有详情数据")
-                }
+    private let gray08 = Color(hex: 0x646363)
+    private let grayT = Color(hex: 0xE5E5E5)
 
-                Button {
-                    showFill = true
-                } label: {
-                    Label("填报维保内容", systemImage: "square.and.pencil")
-                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .background(C.blue).foregroundColor(.white).cornerRadius(9)
-                }
-                .padding(.horizontal, 14).padding(.bottom, 14)
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                LinearGradient(colors: [C.gradStart, C.gradEnd],
+                               startPoint: .leading, endPoint: .trailing)
+                Text("维保详情").font(.system(size: 15)).foregroundColor(.white)
             }
-            .padding(12)
+            .frame(height: 50)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    // 维保单号
+                    HStack(spacing: 0) {
+                        Text("维保单号：")
+                            .font(.system(size: 15)).foregroundColor(.black)
+                            .frame(height: 50, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(store.rawString("id"))
+                            .font(.system(size: 15)).foregroundColor(gray08)
+                            .frame(height: 50, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .layoutPriority(3)
+                    }
+                    .padding(.horizontal, 10)
+                    .background(Color.white)
+
+                    // 维保厂商 / 月份
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            Text("维保厂商：")
+                                .font(.system(size: 15)).foregroundColor(.black)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(store.rawString("companyName"))
+                                .font(.system(size: 15)).foregroundColor(gray08)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                        }
+                        Rectangle().fill(grayT).frame(height: 0.3)
+                        HStack(spacing: 0) {
+                            Text("月份：")
+                                .font(.system(size: 15)).foregroundColor(.black)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(store.rawString("month"))
+                                .font(.system(size: 15)).foregroundColor(gray08)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                        }
+                        Rectangle().fill(grayT).frame(height: 0.3)
+                    }
+                    .padding(.horizontal, 10)
+                    .background(Color.white)
+                    .padding(.top, 8)
+
+                    // 子单列表
+                    HStack(spacing: 0) {
+                        Text("子单列表")
+                            .font(.system(size: 15)).foregroundColor(.black)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+
+                    if store.fields.isEmpty {
+                        EmptyHint(text: store.error ?? "暂无子单")
+                            .frame(height: 200)
+                    } else {
+                        DetailFieldList(fields: store.fields)
+                            .padding(.horizontal, 10)
+                    }
+
+                    // 填报入口
+                    Button {
+                        showFill = true
+                    } label: {
+                        Label("填报维保内容", systemImage: "square.and.pencil")
+                            .font(.system(size: 15)).foregroundColor(.white)
+                            .frame(maxWidth: .infinity).frame(height: 40)
+                            .background(C.blue).cornerRadius(3)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 14)
+
+                    Spacer(minLength: 0)
+                }
+            }
+            .background(Color(hex: 0xF9F9F9))
         }
-        .background(C.bg)
-        .navigationTitle("维保详情")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .sheet(isPresented: $showFill) {
             NavigationView {
                 MaintainFillScreen(maintenanceId: maintenanceId).environmentObject(app)
@@ -583,6 +652,8 @@ struct MaintainDetailScreen: View {
         }
     }
 }
+
+
 
 // MARK: - 排班详情 / 审核
 
