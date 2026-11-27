@@ -80,27 +80,43 @@ final class DispatchStore: ObservableObject {
     @Published var submitting = false
 
     // MARK: 列表
+    /// 照 j5/a.smali：调度单页签走 processAdjustment/getTaskList.do
+    /// 参数 page / rows / sort / order / taskIds
     func loadList(unit: String) async {
         loading = true
         listError = nil
         do {
             let raw = try await Net.shared.post(
-                "SIPAIIS_DataCenter/work/processAdjustment/getlist.do",
-                ["unitId": unit, "page": "1", "rows": "100",
-                 "sort": "insdt", "order": "desc"])
-            let arr = Net.array(raw, key: "rows")
+                "SIPAIIS_DataCenter/work/processAdjustment/getTaskList.do",
+                ["page": "1", "rows": "50", "sort": "insdt",
+                 "order": "desc", "taskIds": ""])
+
+            // 返回是 {code,msg,result:{total,rows}}，每行是 {id, task:{}, businessEntity:{}}
+            var arr: [[String: Any]] = []
+            if let d = raw as? [String: Any] {
+                if let r = d["result"] as? [String: Any],
+                   let rows = r["rows"] as? [[String: Any]] {
+                    arr = rows
+                } else if let rows = d["rows"] as? [[String: Any]] {
+                    arr = rows
+                }
+            }
+
             orders = arr.map { d in
-                DispatchOrder(
-                    id: Net.str(d, "id"),
-                    contents: Net.str(d, "contents"),
-                    status: Net.str(d, "status"),
-                    typeName: Net.str(d, "typeName"),
-                    targetuser: Net.str(d, "targetuser"),
-                    targetcompanyid: Net.str(d, "targetcompanyid"),
-                    company: Net.str(Net.dict(d["targetCompany"]), "sname"),
-                    insdt: Net.str(d, "insdt"),
-                    stdt: Net.str(d, "stdt"),
-                    eddt: Net.str(d, "eddt"))
+                let task = Net.dict(d["task"])
+                let be = Net.dict(d["businessEntity"])
+                let company = Net.dict(be["targetCompany"])
+                return DispatchOrder(
+                    id: Net.str(d, "id").isEmpty ? Net.str(task, "id") : Net.str(d, "id"),
+                    contents: Net.str(be, "contents"),
+                    status: Net.str(be, "status"),
+                    typeName: Net.str(be, "typeName"),
+                    targetuser: Net.str(be, "targetuser"),
+                    targetcompanyid: Net.str(be, "targetcompanyid"),
+                    company: Net.str(company, "sname"),
+                    insdt: Net.str(task, "createTime"),
+                    stdt: Net.str(be, "stdt"),
+                    eddt: Net.str(be, "eddt"))
             }
         } catch {
             listError = error.localizedDescription
