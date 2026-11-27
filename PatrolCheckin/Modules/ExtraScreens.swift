@@ -164,135 +164,162 @@ struct RoutePickerSheet: View {
 
 struct MaintainFillScreen: View {
     @EnvironmentObject var app: AppState
-    @Environment(\.presentationMode) private var presentation
-
     let maintenanceId: String
 
+    @State private var startTime = Date()
+    @State private var endTime = Date()
+    @State private var requirement = ""
     @State private var equipmentName = ""
-    @State private var man = ""
-    @State private var startDate = Date()
-    @State private var plannedEnd = Date()
-    @State private var money = ""
-    @State private var problem = ""
-    @State private var photos: [UIImage] = []
+    @State private var manName = ""
+    @State private var cost = ""
     @State private var busy = false
-    @State private var message: String?
+    @State private var msg: String?
+    @Environment(\.presentationMode) private var presentation
+
+    private let grayT = Color(hex: 0xE5E5E5)
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                field("设备名称", $equipmentName, "必填")
-                field("维保人", $man, app.caption)
-                dateField("开始日期", $startDate)
-                dateField("计划完成", $plannedEnd)
-                field("计划费用", $money, "元")
-                multiline("问题内容", $problem)
-                PhotoStrip(photos: $photos)
+        VStack(spacing: 0) {
+            ZStack {
+                LinearGradient(colors: [C.gradStart, C.gradEnd],
+                               startPoint: .leading, endPoint: .trailing)
+                Text("维保填报").font(.system(size: 15)).foregroundColor(.white)
+            }
+            .frame(height: 50)
 
-                VStack(spacing: 8) {
+            ScrollView {
+                VStack(spacing: 0) {
+                    rowDate("*开始时间：", $startTime)
+                    thin
+                    rowDate("*预计完成：", $endTime)
+                    thin
+
+                    // 工作要求
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("工作要求")
+                            .font(.system(size: 15)).foregroundColor(.black)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ZStack(alignment: .topLeading) {
+                            if requirement.isEmpty {
+                                Text("请填写工作要求")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(Color(hex: 0xC7C7CD))
+                                    .padding(5)
+                            }
+                            TextEditor(text: $requirement)
+                                .font(.system(size: 15))
+                                .padding(2)
+                                .frame(height: 100)
+                        }
+                        .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                    }
+                    .padding(.vertical, 6)
+
+                    rowText("*选择设备：", equipmentName.isEmpty ? "请选择设备" : equipmentName)
+                    rowText("*维保人：", manName.isEmpty ? "请选择维保人" : manName)
+
+                    HStack(spacing: 0) {
+                        Text("*计划费用：")
+                            .font(.system(size: 15)).foregroundColor(.black)
+                            .frame(height: 40, alignment: .center)
+                        TextField("单位：元", text: $cost)
+                            .font(.system(size: 15))
+                            .keyboardType(.decimalPad)
+                            .frame(height: 40)
+                            .frame(maxWidth: .infinity)
+                            .layoutPriority(3)
+                    }
+                    .frame(height: 40)
+
                     Button {
                         Task { await submit() }
                     } label: {
                         HStack(spacing: 8) {
                             if busy { ProgressView().tint(.white) }
-                            Text(busy ? "提交中…" : "提交")
-                                .font(.system(size: 16, weight: .semibold))
+                            Text(busy ? "提交中…" : "提 交")
+                                .font(.system(size: 19)).foregroundColor(.white)
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(problem.isEmpty ? C.sub.opacity(0.4) : C.blue)
-                        .foregroundColor(.white).cornerRadius(10)
+                        .frame(maxWidth: .infinity).frame(height: 40)
+                        .background(C.blue).cornerRadius(3)
                     }
-                    .disabled(busy || problem.isEmpty)
-                    if let m = message {
-                        Text(m).font(.caption).foregroundColor(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 14)
+
+                    if let m = msg {
+                        Text(m).font(.system(size: 12)).foregroundColor(.red)
+                            .padding(.top, 8)
                     }
+
+                    Spacer(minLength: 20)
                 }
-                .padding(14).background(Color.white).cornerRadius(10)
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
             }
-            .padding(12)
+            .background(Color(hex: 0xF9F9F9))
         }
-        .background(C.bg)
-        .navigationTitle("维保填报")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .task { manName = app.caption }
     }
 
-    private func fmt(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: d)
+    private var thin: some View {
+        Rectangle().fill(grayT).frame(height: 0.3)
     }
 
-    @ViewBuilder
-    private func field(_ label: String, _ text: Binding<String>, _ hint: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 12)).foregroundColor(C.sub)
-            TextField(hint, text: text)
-                .font(.system(size: 15)).padding(10)
-                .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-                .overlay(RoundedRectangle(cornerRadius: 7)
-                    .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-                .cornerRadius(7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14).background(Color.white).cornerRadius(10)
-    }
-
-    @ViewBuilder
-    private func dateField(_ label: String, _ date: Binding<Date>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 12)).foregroundColor(C.sub)
-            DatePicker("", selection: date, displayedComponents: [.date])
+    private func rowDate(_ label: String, _ binding: Binding<Date>) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .font(.system(size: 15)).foregroundColor(.black)
+                .frame(height: 40, alignment: .center)
+            DatePicker("", selection: binding, displayedComponents: [.date, .hourAndMinute])
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(3)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14).background(Color.white).cornerRadius(10)
+        .frame(height: 40)
     }
 
-    @ViewBuilder
-    private func multiline(_ label: String, _ text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 12)).foregroundColor(C.sub)
-            TextEditor(text: text)
-                .font(.system(size: 15)).frame(minHeight: 100).padding(8)
-                .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-                .overlay(RoundedRectangle(cornerRadius: 7)
-                    .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-                .cornerRadius(7)
+    private func rowText(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .font(.system(size: 15)).foregroundColor(.black)
+                .frame(height: 40, alignment: .center)
+            Text(value)
+                .font(.system(size: 15)).foregroundColor(Color(hex: 0x646363))
+                .frame(height: 40, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(3)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14).background(Color.white).cornerRadius(10)
+        .frame(height: 40)
     }
 
     private func submit() async {
         busy = true
-        message = nil
+        msg = nil
         do {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd HH:mm:ss"
             let raw = try await Net.shared.post(
-                "SIPAIIS_Equipment/maintenance/insetMaintenanceDetailNoFlow.do",
+                "SIPAIIS_Equipment/maintenance/saveMaintenanceChild.do",
                 ["maintenanceId": maintenanceId,
-                 "equipmentId": "",
-                 "maintenanceMan": man.isEmpty ? app.caption : man,
-                 "startDate": fmt(startDate),
-                 "plannedenddt": fmt(plannedEnd),
-                 "planMoney": money,
-                 "problemcontent": problem])
-            let d = Net.dict(raw)
-            let ok = Net.isOK(raw)
-            if ok {
-                app.show("维保已填报 ✓")
+                 "unitId": app.unit,
+                 "startTime": f.string(from: startTime),
+                 "endTime": f.string(from: endTime),
+                 "requirement": requirement,
+                 "cost": cost,
+                 "maintenanceMan": manName])
+            if Net.isOK(raw) {
+                app.show("维保填报成功 ✓")
                 presentation.wrappedValue.dismiss()
             } else {
-                message = Net.str(d, "msg").isEmpty
-                    ? String(describing: raw).prefix(180).description
-                    : Net.str(d, "msg")
+                msg = Net.message(raw)
             }
         } catch {
-            message = error.localizedDescription
+            msg = error.localizedDescription
         }
         busy = false
     }
 }
+
+
 
 // MARK: - 新建排班
 // 接口：processAdjustment/dostart.do { id }
