@@ -225,10 +225,11 @@ struct SectionTreeScreen: View {
                     NavigationLink {
                         PointListBySection(sectionId: s.id, sectionName: s.name)
                     } label: {
-                        Label(s.name, systemImage: "square.grid.2x2")
+                        TreeRow(title: s.name)
                     }
+                    .listRowInsets(EdgeInsets())
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.plain)
             }
         }
         .background(C.bg)
