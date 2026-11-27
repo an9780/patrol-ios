@@ -8,13 +8,14 @@ final class MaintainStore: ObservableObject {
     @Published var loading = false
     @Published var error: String?
 
-    func load() async {
+    func load(unit: String) async {
         loading = true
         error = nil
         do {
             let raw = try await Net.shared.post(
-                "SIPAIIS_Equipment/maintenance/getMaintenanceTaskList.do",
-                ["page": "1", "rows": "50", "sort": "insdt", "order": "desc"])
+                "SIPAIIS_Equipment/maintenance/getListMaintenance.do",
+                ["page": "1", "rows": "20", "sort": "insdt", "order": "desc",
+                 "companyid": unit, "begin_time": "", "end_time": "", "status": ""])
             var arr: [[String: Any]] = []
             if let d = raw as? [String: Any] {
                 if let a = d["rows"] as? [[String: Any]] { arr = a }
@@ -67,7 +68,7 @@ struct MaintainScreen: View {
             }
             .background(C.bg)
             .navigationBarHidden(true)
-            .task { await store.load() }
+            .task { await store.load(unit: app.unit) }
         }
         .navigationViewStyle(.stack)
     }
