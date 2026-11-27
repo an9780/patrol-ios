@@ -326,146 +326,199 @@ struct MaintainFillScreen: View {
 
 struct ScheduleCreateScreen: View {
     @EnvironmentObject var app: AppState
-    @Environment(\.presentationMode) private var presentation
-
-    @State private var types: [FormOption] = []
-    @State private var typeId = ""
-    @State private var content = ""
+    @State private var typeIndex = 0
+    @State private var levelIndex = 0
     @State private var start = Date()
     @State private var end = Date()
+    @State private var content = ""
+    @State private var receiver = ""
     @State private var busy = false
-    @State private var message: String?
+    @State private var msg: String?
+    @Environment(\.presentationMode) private var presentation
+
+    private let types = ["其他调度", "生产调度", "设备调度", "安全调度"]
+    private let levels = ["一级", "二级", "三级"]
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("调度类型").font(.system(size: 12)).foregroundColor(C.sub)
-                    Menu {
-                        ForEach(types) { t in
-                            Button(t.name) { typeId = t.id }
-                        }
-                    } label: {
-                        HStack {
-                            Text(types.first { $0.id == typeId }?.name ?? "请选择")
-                                .font(.system(size: 15))
-                                .foregroundColor(typeId.isEmpty ? C.sub : C.text)
-                            Spacer()
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12)).foregroundColor(C.sub)
-                        }
-                        .padding(11)
-                        .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-                        .overlay(RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-                        .cornerRadius(7)
+        VStack(spacing: 0) {
+            ZStack {
+                LinearGradient(colors: [C.gradStart, C.gradEnd],
+                               startPoint: .leading, endPoint: .trailing)
+                Text("新建调度").font(.system(size: 15)).foregroundColor(.white)
+            }
+            .frame(height: 50)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    // 调度厂区
+                    HStack(spacing: 0) {
+                        Text("调度厂区：")
+                            .font(.system(size: 15)).foregroundColor(.black)
+                            .frame(height: 40, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(app.unit)
+                            .font(.system(size: 15)).foregroundColor(Color(hex: 0x646363))
+                            .frame(height: 40, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .layoutPriority(2.5)
+                        Image("arrow_right")
+                            .resizable().scaledToFit()
+                            .padding(9).frame(width: 40, height: 40)
+                            .layoutPriority(0.5)
                     }
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+                    .frame(height: 40)
+                    .padding(.horizontal, 10)
+                    .background(Color.white)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("调度内容").font(.system(size: 12)).foregroundColor(C.sub)
-                    TextEditor(text: $content)
-                        .font(.system(size: 15)).frame(minHeight: 100).padding(8)
-                        .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-                        .overlay(RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-                        .cornerRadius(7)
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+                    // 类型 / 等级
+                    VStack(spacing: 0) {
+                        pickerRow("调度类型：", types, $typeIndex)
+                        thin
+                        pickerRow("调度等级：", levels, $levelIndex)
+                        thin
+                        dateRow("开始日期：", $start)
+                        thin
+                        dateRow("结束日期：", $end)
+                        thin
+                        HStack(spacing: 0) {
+                            Text("接收人员：")
+                                .font(.system(size: 15)).foregroundColor(.black)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(receiver.isEmpty ? "点击选择" : receiver)
+                                .font(.system(size: 15)).foregroundColor(Color(hex: 0x646363))
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                        }
+                        .frame(height: 40)
+                        thin
+                    }
+                    .padding(.horizontal, 10)
+                    .background(Color.white)
+                    .padding(.top, 8)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("起止日期").font(.system(size: 12)).foregroundColor(C.sub)
-                    DatePicker("开始", selection: $start, displayedComponents: [.date])
-                    DatePicker("结束", selection: $end, displayedComponents: [.date])
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+                    // 调度内容
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("调度内容：")
+                            .font(.system(size: 15)).foregroundColor(.black)
+                            .frame(height: 35, alignment: .center)
+                        ZStack(alignment: .topLeading) {
+                            if content.isEmpty {
+                                Text("请填写调度内容")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(Color(hex: 0xC7C7CD))
+                                    .padding(6)
+                            }
+                            TextEditor(text: $content)
+                                .font(.system(size: 15))
+                                .padding(2)
+                                .frame(height: 110)
+                        }
+                        .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                    }
+                    .padding(10)
+                    .background(Color.white)
+                    .padding(.top, 8)
 
-                VStack(spacing: 8) {
                     Button {
                         Task { await submit() }
                     } label: {
                         HStack(spacing: 8) {
                             if busy { ProgressView().tint(.white) }
-                            Text(busy ? "提交中…" : "发起调度")
-                                .font(.system(size: 16, weight: .semibold))
+                            Text(busy ? "提交中…" : "提 交")
+                                .font(.system(size: 19)).foregroundColor(.white)
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(content.isEmpty ? C.sub.opacity(0.4) : C.blue)
-                        .foregroundColor(.white).cornerRadius(10)
+                        .frame(maxWidth: .infinity).frame(height: 40)
+                        .background(C.blue).cornerRadius(3)
                     }
-                    .disabled(busy || content.isEmpty)
-                    if let m = message {
-                        Text(m).font(.caption).foregroundColor(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10).padding(.top, 14)
+
+                    if let m = msg {
+                        Text(m).font(.system(size: 12)).foregroundColor(.red)
+                            .padding(.top, 8)
                     }
+
+                    Spacer(minLength: 20)
                 }
-                .padding(14).background(Color.white).cornerRadius(10)
             }
-            .padding(12)
+            .background(Color(hex: 0xF9F9F9))
         }
-        .background(C.bg)
-        .navigationTitle("新建调度")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await loadTypes() }
+        .navigationBarHidden(true)
     }
 
-    private func loadTypes() async {
-        do {
-            let raw = try await Net.shared.post(
-                "SIPAIIS_Base/base/dict/data.do",
-                ["dictType": "Business_ProcessAdjustment"])
-            var arr: [[String: Any]] = []
-            if let d = raw as? [String: Any] {
-                for k in ["result", "rows", "data", "list"] {
-                    if let a = d[k] as? [[String: Any]] { arr = a; break }
-                }
-            } else if let a = raw as? [[String: Any]] { arr = a }
-            types = arr.compactMap {
-                let id = Net.str($0, "id")
-                let name = Net.str($0, "dictLabel").isEmpty
-                    ? Net.str($0, "name") : Net.str($0, "dictLabel")
-                guard !id.isEmpty else { return nil }
-                return FormOption(id: id, name: name.isEmpty ? id : name)
-            }
-        } catch {
-            types = []
-        }
+    private var thin: some View {
+        Rectangle().fill(Color(hex: 0xE5E5E5)).frame(height: 0.3)
     }
 
-    private func fmt(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: d)
+    private func pickerRow(_ label: String, _ options: [String],
+                           _ index: Binding<Int>) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .font(.system(size: 15)).foregroundColor(.black)
+                .frame(height: 40, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Menu {
+                ForEach(Array(options.enumerated()), id: \.offset) { i, o in
+                    Button(o) { index.wrappedValue = i }
+                }
+            } label: {
+                HStack {
+                    Text(options[index.wrappedValue])
+                        .font(.system(size: 15)).foregroundColor(Color(hex: 0x646363))
+                    Spacer()
+                    Image("arrow_right").resizable().scaledToFit()
+                        .frame(width: 12, height: 12).rotationEffect(.degrees(90))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .layoutPriority(3)
+        }
+        .frame(height: 40)
+    }
+
+    private func dateRow(_ label: String, _ binding: Binding<Date>) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .font(.system(size: 15)).foregroundColor(.black)
+                .frame(height: 40, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            DatePicker("", selection: binding, displayedComponents: [.date])
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(3)
+        }
+        .frame(height: 40)
     }
 
     private func submit() async {
         busy = true
-        message = nil
+        msg = nil
         do {
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
             let raw = try await Net.shared.post(
                 "SIPAIIS_DataCenter/work/processAdjustment/dostart.do",
-                ["id": typeId,
+                ["unitId": app.unit,
+                 "targetCompanyId": app.unit,
+                 "typeName": types[typeIndex],
+                 "adjustmentLevel": "\(levelIndex + 1)",
+                 "stdt": f.string(from: start),
+                 "eddt": f.string(from: end),
                  "contents": content,
-                 "unitId": app.unit,
-                 "targetcompanyid": app.unit,
-                 "stdt": fmt(start),
-                 "eddt": fmt(end)])
-            let d = Net.dict(raw)
-            let ok = Net.isOK(raw)
-            if ok {
-                app.show("调度已发起 ✓")
+                 "targetuser": receiver])
+            if Net.isOK(raw) {
+                app.show("调度已创建 ✓")
                 presentation.wrappedValue.dismiss()
             } else {
-                message = Net.str(d, "msg").isEmpty
-                    ? String(describing: raw).prefix(180).description
-                    : Net.str(d, "msg")
+                msg = Net.message(raw)
             }
         } catch {
-            message = error.localizedDescription
+            msg = error.localizedDescription
         }
         busy = false
     }
 }
+
 
 // MARK: - 测点趋势（简单折线，兼容 iOS 15）
 
