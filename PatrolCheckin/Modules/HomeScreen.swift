@@ -40,6 +40,8 @@ final class HomeStore: ObservableObject {
 struct HomeScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = HomeStore()
+    @State private var showEquSearch = false
+    @State private var showSectionTree = false
 
     var body: some View {
         ScrollView {
@@ -120,8 +122,8 @@ struct HomeScreen: View {
                 HStack(spacing: 0) {
                     module("巡检任务", "moudle_fg_main_patrol") { app.tab = 2 }
                     module("异常上报", "moudle_fg_main_fault") { app.tab = 1 }
-                    module("生产数据", "moudle_fg_main_data") { app.tab = 2 }
-                    module("设备查询", "moudle_fg_main_equ") { app.tab = 3 }
+                    module("生产数据", "moudle_fg_main_data") { showSectionTree = true }
+                    module("设备查询", "moudle_fg_main_equ") { showEquSearch = true }
                 }
                 .frame(height: 60)
                 .padding(.top, 10).padding(.bottom, 10)
@@ -141,6 +143,12 @@ struct HomeScreen: View {
         }
         .background(C.bg)
         .navigationBarHidden(true)
+        .sheet(isPresented: $showEquSearch) {
+            NavigationView { EquipmentSearchScreen().environmentObject(app) }
+        }
+        .sheet(isPresented: $showSectionTree) {
+            NavigationView { SectionTreeScreen().environmentObject(app) }
+        }
         .task { await store.load(unit: app.unit, date: app.date) }
     }
 
