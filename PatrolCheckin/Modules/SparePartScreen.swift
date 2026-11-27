@@ -56,7 +56,8 @@ final class SparePartStore: ObservableObject {
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_Equipment/sparepart/goodsClass/search.do",
-                ["unit_id": unit, "name": "", "page": "1", "rows": "100"])
+                ["unit_id": unit, "name": "", "pid": "", "page": "1",
+                 "rows": "50", "order": "asc", "sort": ""])
             if let a = raw as? [[String: Any]] { rows = a }
             else if let d = raw as? [String: Any] {
                 if let a = d["rows"] as? [[String: Any]] { rows = a }
