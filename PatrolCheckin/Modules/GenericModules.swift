@@ -108,22 +108,6 @@ struct GenericListScreen: View {
 
 // MARK: - 维保模块
 
-struct MaintainScreen: View {
-    @EnvironmentObject var app: AppState
-
-    var body: some View {
-        NavigationView {
-            GenericListScreen(
-                title: "设备维保",
-                path: "SIPAIIS_Equipment/maintenance/getMaintenanceTaskList.do",
-                buildParams: {
-                    ["page": "1", "rows": "50", "sort": "insdt", "order": "desc"]
-                }
-            )
-        }
-        .navigationViewStyle(.stack)
-    }
-}
 
 // MARK: - 报警模块
 
