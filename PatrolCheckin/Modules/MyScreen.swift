@@ -12,6 +12,7 @@ struct MyScreen: View {
     @State private var showChangePwd = false
     @State private var showEndpoints = false
     @State private var showSchedules = false
+    @State private var showSpare = false
 
     private let titleColor = Color(hex: 0x373A3D)
     private let lineColor = Color(hex: 0xE5E5E5)
@@ -63,6 +64,8 @@ struct MyScreen: View {
 
                     // 菜单
                     VStack(spacing: 0) {
+                        menuRow("备件", "moudle_doc", showArrow: true) { showSpare = true }
+                        divider
                         menuRow("排班管理", "moudle_doc", showArrow: true) { showSchedules = true }
                         divider
                         menuRow("新建调度", "moudle_doc", showArrow: true) { showSchedule = true }
@@ -104,6 +107,9 @@ struct MyScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showSpare) {
+            NavigationView { SparePartScreen().environmentObject(app) }
+        }
         .sheet(isPresented: $showSchedules) {
             NavigationView { ScheduleListScreen().environmentObject(app) }
         }
