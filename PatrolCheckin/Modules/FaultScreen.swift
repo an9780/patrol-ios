@@ -15,31 +15,30 @@ enum FaultTab: String, CaseIterable, Identifiable {
         switch self {
         case .abnormity:    return "SIPAIIS_DataCenter/maintenance/abnormity/getList.do"
         case .repairTask:   return "SIPAIIS_Equipment/maintenance/getTaskList.do"
-        case .maintainTask: return "SIPAIIS_Equipment/maintenance/getListMaintenance.do"
-        case .dispose:      return "SIPAIIS_Equipment/maintenance/getMDetailList.do"
-        case .dispatch:     return "SIPAIIS_DataCenter/work/processAdjustment/getlist.do"
+        case .maintainTask: return "SIPAIIS_Equipment/maintenance/getTaskList.do"
+        case .dispose:      return "SIPAIIS_Equipment/maintenance/getTaskList.do"
+        case .dispatch:     return "SIPAIIS_DataCenter/work/processAdjustment/getTaskList.do"
         }
     }
 
+    /// 照 j5/a.smali 里的真实参数
     func params(unit: String, search: String) -> [String: String] {
-        var p: [String: String] = ["unitId": unit, "page": "1", "rows": "50"]
-        if !search.isEmpty {
-            p["search_name"] = search
-            p["search_code"] = search
-        }
         switch self {
         case .abnormity:
-            break
+            return ["unitId": unit, "page": "1", "rows": "20"]
         case .repairTask:
-            p["sort"] = "insdt"; p["order"] = "desc"
+            return ["page": "1", "rows": "20", "searchName": search,
+                    "sort": "insdt", "order": "desc", "searchType": "1"]
         case .maintainTask:
-            p["sort"] = "insdt"; p["order"] = "desc"
+            return ["page": "1", "rows": "20", "searchName": search,
+                    "sort": "insdt", "order": "desc", "searchType": "2"]
         case .dispose:
-            p["type"] = "3"
+            return ["page": "1", "rows": "20", "searchName": search,
+                    "sort": "insdt", "order": "desc", "searchType": "3"]
         case .dispatch:
-            p["sort"] = "insdt"; p["order"] = "desc"
+            return ["page": "1", "rows": "20", "sort": "insdt",
+                    "order": "desc", "taskIds": ""]
         }
-        return p
     }
 }
 
