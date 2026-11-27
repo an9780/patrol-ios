@@ -73,3 +73,57 @@ struct HistoryTaskRow: View {
         .padding(.horizontal, 8).padding(.vertical, 3)
     }
 }
+
+
+/// item_selector_person.xml / item_goods.xml：绿底卡片，40dp 行，白字 + 复选框
+struct SelectableGreenRow: View {
+    let title: String
+    let checked: Bool
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 15)).foregroundColor(.white)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(height: 40)
+            Image(systemName: checked ? "checkmark.square.fill" : "square")
+                .font(.system(size: 20))
+                .foregroundColor(.white)
+                .frame(width: 40, height: 40)
+        }
+        .background(RoundedRectangle(cornerRadius: 3).fill(Color(hex: 0x2FA84F)))
+        .padding(.horizontal, 8).padding(.vertical, 3)
+    }
+}
+
+/// item_measurepoint.xml：48dp 行，图标 45dp，名称 15sp（权重 6）/ 值 15sp（权重 3）/ 按钮（权重 3）
+struct MeasurePointRow: View {
+    let name: String
+    let value: String
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Image("iv_cod")
+                    .resizable().scaledToFit()
+                    .padding(8).frame(width: 45, height: 45)
+                HStack(spacing: 0) {
+                    Text(name)
+                        .font(.system(size: 15)).foregroundColor(.black)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(6)
+                    Text(value)
+                        .font(.system(size: 15)).foregroundColor(.black)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .layoutPriority(3)
+                    Image("green_btn")
+                        .resizable().scaledToFit()
+                        .padding(9).frame(maxWidth: .infinity, maxHeight: 45)
+                        .layoutPriority(3)
+                }
+                .frame(height: 45)
+            }
+            .frame(height: 45)
+            Rectangle().fill(Color(hex: 0xDADDE2)).frame(height: 0.7)
+        }
+        .frame(height: 48)
+    }
+}
