@@ -34,6 +34,8 @@ struct ScheduleListScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = ScheduleListStore()
     @State private var keyword = ""
+    @State private var showAudit = false
+    @State private var auditId = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,6 +79,16 @@ struct ScheduleListScreen: View {
                                 card(d)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("审核") {
+                                    auditId = Net.str(d, "id")
+                                    showAudit = true
+                                }
+                                Button("查看详情") {
+                                    auditId = Net.str(d, "id")
+                                    showAudit = true
+                                }
+                            }
                         }
                     }
                 }
@@ -84,6 +96,12 @@ struct ScheduleListScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showAudit) {
+            NavigationView {
+                ScheduleAuditScreen(taskId: auditId, businessId: auditId)
+                    .environmentObject(app)
+            }
+        }
         .task { await store.load(unit: app.unit, keyword: "") }
     }
 
