@@ -1,23 +1,23 @@
 import SwiftUI
 
-// MARK: - 异常处理（对接原版 5 个工单页签）
+// MARK: - 异常处理（严格照 res/layout/fragment_fault.xml 还原）
 
 enum FaultTab: String, CaseIterable, Identifiable {
-    case abnormity = "异常上报"
-    case repairTask = "检修工单"
+    case abnormity    = "异常上报"
+    case repairTask   = "检修工单"
     case maintainTask = "维修工单"
-    case dispose = "异常处置"
-    case dispatch = "调度单"
+    case dispose      = "异常处置"
+    case dispatch     = "调度单"
 
     var id: String { rawValue }
 
     var path: String {
         switch self {
-        case .abnormity:   return "SIPAIIS_DataCenter/maintenance/abnormity/getList.do"
-        case .repairTask:  return "SIPAIIS_Equipment/maintenance/getTaskList.do"
-        case .maintainTask: return "SIPAIIS_Equipment/maintenance/getMaintenanceTaskList.do"
-        case .dispose:     return "SIPAIIS_Equipment/maintenance/getMDetailList.do"
-        case .dispatch:    return "SIPAIIS_DataCenter/work/processAdjustment/getlist.do"
+        case .abnormity:    return "SIPAIIS_DataCenter/maintenance/abnormity/getList.do"
+        case .repairTask:   return "SIPAIIS_Equipment/maintenance/getTaskList.do"
+        case .maintainTask: return "SIPAIIS_Equipment/maintenance/getListMaintenance.do"
+        case .dispose:      return "SIPAIIS_Equipment/maintenance/getMDetailList.do"
+        case .dispatch:     return "SIPAIIS_DataCenter/work/processAdjustment/getlist.do"
         }
     }
 
@@ -29,7 +29,7 @@ enum FaultTab: String, CaseIterable, Identifiable {
         }
         switch self {
         case .abnormity:
-            p["status"] = ""
+            break
         case .repairTask:
             p["sort"] = "insdt"; p["order"] = "desc"
         case .maintainTask:
@@ -55,21 +55,27 @@ final class FaultStore: ObservableObject {
         error = nil
         do {
             let raw = try await Net.shared.post(tab.path, tab.params(unit: unit, search: search))
-            var arr: [[String: Any]] = []
-            if let d = raw as? [String: Any] {
-                for k in ["content1", "result", "rows", "list", "data"] {
-                    if let a = d[k] as? [[String: Any]], !a.isEmpty { arr = a; break }
-                }
-            } else if let a = raw as? [[String: Any]] {
-                arr = a
-            }
-            rows = arr.enumerated().map { GenericRow.from($0.element, index: $0.offset) }
+            rows = FaultStore.rows(from: raw)
         } catch {
             self.error = error.localizedDescription
             rows = []
         }
         loading = false
         loaded = true
+    }
+
+    static func rows(from raw: Any) -> [GenericRow] {
+        var arr: [[String: Any]] = []
+        if let a = raw as? [[String: Any]] {
+            arr = a
+        } else if let d = raw as? [String: Any] {
+            for k in ["content1", "result", "rows", "list", "data"] {
+                if let a = d[k] as? [[String: Any]] { arr = a; break }
+                if let sub = d[k] as? [String: Any],
+                   let a = sub["rows"] as? [[String: Any]] { arr = a; break }
+            }
+        }
+        return arr.enumerated().map { GenericRow.from($0.element, index: $0.offset) }
     }
 }
 
@@ -81,42 +87,56 @@ struct FaultScreen: View {
     @State private var showHistory = false
     @State private var showReport = false
 
+    private let grad = LinearGradient(colors: [C.gradStart, C.gradEnd],
+                                      startPoint: .leading, endPoint: .trailing)
+
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // 蓝色标题栏
-                HStack {
-                    Spacer()
-                    Text("异常处理")
-                        .font(.system(size: 17, weight: .semibold)).foregroundColor(.white)
-                    Spacer()
-                    Button("历史记录") { showHistory = true }
-                        .font(.system(size: 13)).foregroundColor(.white)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 12)
-                .background(C.blue)
-
-                // 搜索 + 上报
-                HStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(C.sub).font(.system(size: 14))
-                        TextField("搜索工单", text: $search)
-                            .font(.system(size: 14))
-                            .onSubmit { Task { await reload() } }
+                // ── 标题栏：bg_title 渐变，50dp ──
+                ZStack {
+                    grad
+                    HStack(spacing: 0) {
+                        Color.clear.frame(maxWidth: .infinity)
+                        Text("异常处理")
+                            .font(.system(size: 15)).foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                        Button("历史记录") { showHistory = true }
+                            .font(.system(size: 13)).foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(Color.white).cornerRadius(6)
+                }
+                .frame(height: 50)
+
+                // ── 搜索行：padding 16 ──
+                HStack(spacing: 0) {
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 6).fill(Color.white)
+                        HStack(spacing: 0) {
+                            Spacer().frame(width: 12)
+                            Image("moudle_search")
+                                .resizable().scaledToFit()
+                                .padding(8)
+                                .frame(width: 36, height: 36)
+                            TextField("", text: $search)
+                                .font(.system(size: 14))
+                                .padding(.leading, 9)
+                                .padding(.trailing, 8)
+                                .onSubmit { Task { await reload() } }
+                        }
+                    }
+                    .frame(height: 36)
+                    .padding(.trailing, 28)
 
                     Button("异常上报") { showReport = true }
-                        .font(.system(size: 13)).foregroundColor(C.blue)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Color.white).cornerRadius(6)
+                        .font(.system(size: 12)).foregroundColor(C.bar)
+                        .frame(width: 90, height: 32)
+                        .background(Color(hex: 0xEBF5FE))
+                        .cornerRadius(4)
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(C.blue)
+                .padding(16)
 
-                // 页签
+                // ── 5 个页签：横向滚动，34dp 白色胶囊 ──
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(FaultTab.allCases) { t in
@@ -125,72 +145,57 @@ struct FaultScreen: View {
                                 Task { await reload() }
                             } label: {
                                 Text(t.rawValue)
-                                    .font(.system(size: 13, weight: tab == t ? .semibold : .regular))
-                                    .foregroundColor(tab == t ? .white : C.blue)
-                                    .padding(.horizontal, 14).padding(.vertical, 7)
-                                    .background(tab == t ? C.blue : Color.white)
-                                    .cornerRadius(15)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(tab == t ? .white : Color(hex: 0x6179FF))
+                                    .padding(.horizontal, 18)
+                                    .frame(height: 34)
+                                    .background(tab == t ? Color(hex: 0x6179FF) : Color.white)
+                                    .cornerRadius(17)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .padding(.horizontal, 16)
                 }
-                .background(C.bg)
+                .frame(height: 35)
 
-                // 列表
+                // ── 列表区：左右 9，上 8 ──
                 if tab == .dispatch {
-                    DispatchScreen()
-                        .environmentObject(app)
-                } else if store.loading {
-                    ProgressView().padding(.top, 80)
-                    Spacer()
+                    DispatchScreen().environmentObject(app)
+                } else if store.loading && store.rows.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(C.bg)
                 } else if store.rows.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "tray.circle")
-                            .font(.system(size: 54))
-                            .foregroundColor(C.blue.opacity(0.25))
-                        Text("暂无工单")
-                            .font(.system(size: 15)).foregroundColor(C.blue.opacity(0.6))
-                        if let e = store.error {
-                            Text(e).font(.caption).foregroundColor(.red)
-                                .padding(.horizontal, 30).multilineTextAlignment(.center)
-                        }                    }
+                    VStack(spacing: 8) {
+                        Image(systemName: "tray").font(.largeTitle)
+                            .foregroundColor(C.grayText.opacity(0.6))
+                        Text(store.error ?? "暂无工单")
+                            .font(.system(size: 14)).foregroundColor(C.grayText)
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(C.bg)
                 } else {
-                    LoadableList(items: store.rows, empty: "暂无工单") { r in
-                        NavigationLink {
-                            destination(for: r)
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                Rectangle().fill(C.blue).frame(width: 4)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(r.title)
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(C.text).lineLimit(2)
-                                    if !r.subtitle.isEmpty {
-                                        Text(r.subtitle)
-                                            .font(.system(size: 12)).foregroundColor(C.sub)
-                                    }
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(store.rows) { r in
+                                NavigationLink {
+                                    destination(for: r)
+                                } label: {
+                                    faultRow(r)
                                 }
-                                Spacer()
-                                if !r.status.isEmpty {
-                                    StatusPill(text: r.status, color: C.sub)
-                                }
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11)).foregroundColor(C.sub)
+                                .buttonStyle(.plain)
                             }
-                            .padding(11).background(Color.white).cornerRadius(6)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.leading, 9)
+                        .padding(.trailing, 9)
+                        .padding(.top, 8)
                     }
+                    .background(C.bg)
                 }
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $showReport) {
-                NavigationView {
-                    FaultReportScreen().environmentObject(app)
-                }
+                NavigationView { FaultReportScreen().environmentObject(app) }
             }
             .sheet(isPresented: $showHistory) {
                 NavigationView {
@@ -211,6 +216,38 @@ struct FaultScreen: View {
             .task { await reload() }
         }
         .navigationViewStyle(.stack)
+    }
+
+    private func faultRow(_ r: GenericRow) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(r.title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(C.text).lineLimit(2)
+                if !r.subtitle.isEmpty {
+                    Text(r.subtitle).font(.system(size: 12)).foregroundColor(C.sub)
+                }
+            }
+            Spacer()
+            if !r.status.isEmpty {
+                Text(statusText(r.status))
+                    .font(.system(size: 12)).foregroundColor(C.bar)
+                    .padding(.horizontal, 10).frame(height: 22)
+                    .background(C.doingBg).cornerRadius(11)
+            }
+        }
+        .padding(12)
+        .background(Color.white)
+        .cornerRadius(8)
+    }
+
+    private func statusText(_ s: String) -> String {
+        switch s {
+        case "1": return "进行中"
+        case "2": return "已完成"
+        case "3": return "已关闭"
+        default:  return s
+        }
     }
 
     @ViewBuilder
