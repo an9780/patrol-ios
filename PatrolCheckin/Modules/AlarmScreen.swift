@@ -14,7 +14,10 @@ final class AlarmStore: ObservableObject {
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_DataCenter/work/scadaAlarm/getAlarmListByCache.do",
-                ["unitId": unit, "sort": "insdt", "order": "desc"])
+                ["unitId": unit, "page": "1", "rows": "50",
+                 "sort": "insdt", "order": "desc",
+                 "stdt": "", "eddt": "", "alarmLevel": "",
+                 "alarmType": "", "subscription": "", "describe": ""])
             if let d = raw as? [String: Any] {
                 if let a = d["rows"] as? [[String: Any]] { rows = a }
                 else if let r = d["result"] as? [String: Any],
