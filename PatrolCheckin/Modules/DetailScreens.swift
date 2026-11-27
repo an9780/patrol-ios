@@ -439,102 +439,136 @@ struct FaultAuditScreen: View {
 
     @StateObject private var store = DetailStore()
     @State private var opinion = ""
-    @State private var showRoute = false
+    @State private var busy = false
+    @State private var msg: String?
+    @Environment(\.presentationMode) private var presentation
+
+    private let gray04 = Color(hex: 0x757778)
+    private let gray01 = Color(hex: 0xDADDE2)
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if store.loading {
-                    ProgressView().padding(.top, 60)
-                } else if !store.fields.isEmpty {
-                    DetailFieldList(fields: store.fields)
-                } else {
-                    EmptyHint(text: store.error ?? "没有审核数据")
-                }
-
-                if let msg = store.actMessage {
-                    Text(msg).font(.caption).foregroundColor(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14).background(Color.white).cornerRadius(10)
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await audit(pass: false) }
-                    } label: {
-                        Text("驳回").frame(maxWidth: .infinity).padding(.vertical, 13)
-                            .background(Color.white).foregroundColor(.red)
-                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.red.opacity(0.5)))
-                            .cornerRadius(9)
-                    }
-                    Button {
-                        Task { await audit(pass: true) }
-                    } label: {
-                        Text("通过").frame(maxWidth: .infinity).padding(.vertical, 13)
-                            .background(C.blue).foregroundColor(.white).cornerRadius(9)
-                    }
-                }
-                .disabled(store.acting)
-                .padding(14).background(Color.white).cornerRadius(10)
-
-                Button {
-                    showRoute = true
-                } label: {
-                    Label("转下一节点", systemImage: "arrow.turn.down.right")
-                        .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(Color.white).foregroundColor(C.blue)
-                        .overlay(RoundedRectangle(cornerRadius: 9)
-                            .stroke(C.blue.opacity(0.4))).cornerRadius(9)
-                }
-                .padding(.horizontal, 14).padding(.bottom, 14)
+        VStack(spacing: 0) {
+            ZStack {
+                LinearGradient(colors: [C.gradStart, C.gradEnd],
+                               startPoint: .leading, endPoint: .trailing)
+                Text("故障审核").font(.system(size: 15)).foregroundColor(.white)
             }
-            .padding(12)
-        }
-        .background(C.bg)
-        .navigationTitle("审核")
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showRoute) {
-            RoutePickerSheet(taskId: taskId, businessId: businessId, pass: true) { route, users in
-                Task {
-                    let ok = await store.act(
-                        path: "SIPAIIS_Equipment/maintenance/doAuditDetail.do",
-                        params: ["id": businessId,
-                                 "taskid": taskId,
-                                 "businessid": businessId,
-                                 "unitid": app.unit,
-                                 "passstatus": "true",
-                                 "audit": opinion,
-                                 "routeNum": route?.id ?? "",
-                                 "targetusers": users.map { $0.id }.joined(separator: ","),
-                                 "type": "1"])
-                    if ok { app.show("已转交 ✓") }
+            .frame(height: 50)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    // 顶部按钮行：签名 / 提交
+                    HStack(spacing: 0) {
+                        Button("签名") { }
+                            .font(.system(size: 14)).foregroundColor(.white)
+                            .frame(width: 80, height: 35)
+                            .background(C.blue).cornerRadius(3)
+                        Spacer()
+                        Button { Task { await submit() } } label: {
+                            HStack(spacing: 6) {
+                                if busy { ProgressView().tint(.white).scaleEffect(0.7) }
+                                Text(busy ? "提交中…" : "提交")
+                                    .font(.system(size: 14)).foregroundColor(.white)
+                            }
+                            .frame(width: 80, height: 35)
+                            .background(C.blue).cornerRadius(3)
+                        }
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+
+                    // 蓝框卡片
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("*审核意见，请填写")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: 0xA3A1A1))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 10).padding(.top, 8)
+
+                        VStack(spacing: 0) {
+                            ForEach(Array(store.fields.prefix(8).enumerated()), id: \.offset) { _, f in
+                                HStack(spacing: 0) {
+                                    Text(f.label)
+                                        .font(.system(size: 14)).foregroundColor(gray04)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .layoutPriority(1)
+                                    VStack(spacing: 0) {
+                                        Text(f.value)
+                                            .font(.system(size: 14)).foregroundColor(.black)
+                                            .frame(height: 34.5, alignment: .center)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Rectangle().fill(gray01).frame(height: 0.3)
+                                    }
+                                    .layoutPriority(3)
+                                }
+                            }
+
+                            // 审核意见输入
+                            VStack(alignment: .leading, spacing: 0) {
+                                ZStack(alignment: .topLeading) {
+                                    if opinion.isEmpty {
+                                        Text("请填写审核意见")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color(hex: 0xC7C7CD))
+                                            .padding(6)
+                                    }
+                                    TextEditor(text: $opinion)
+                                        .font(.system(size: 14))
+                                        .padding(2)
+                                        .frame(height: 90)
+                                }
+                                .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                                .padding(.horizontal, 8).padding(.vertical, 6)
+                            }
+                        }
+                        .padding(5)
+                        .padding(8)
+                    }
+                    .padding(.horizontal, 10)
+                    .overlay(Rectangle().stroke(Color(hex: 0x43B3FF), lineWidth: 1))
+                    .padding(.horizontal, 10)
+
+                    if let m = msg {
+                        Text(m).font(.system(size: 12)).foregroundColor(.red)
+                            .padding(.top, 8)
+                    }
+
+                    Spacer(minLength: 20)
                 }
             }
+            .background(C.bg)
         }
+        .navigationBarHidden(true)
         .task {
             await store.load(
-                path: "SIPAIIS_Equipment/maintenance/showAuditDetail.do",
-                params: ["taskId": taskId, "unitId": app.unit,
-                         "id": businessId, "masterId": businessId])
+                path: "SIPAIIS_Equipment/maintenance/showMaintenanceDetailView.do",
+                params: ["id": businessId, "unitId": app.unit,
+                         "taskId": taskId, "processInstanceId": ""])
         }
     }
 
-    private func audit(pass: Bool) async {
-        let ok = await store.act(
-            path: "SIPAIIS_Equipment/maintenance/doAuditDetail.do",
-            params: ["id": businessId,
-                     "taskid": taskId,
-                     "businessid": businessId,
-                     "unitid": app.unit,
-                     "passstatus": pass ? "true" : "false",
-                     "audit": opinion,
-                     "type": "1"])
-        if ok {
-            app.show(pass ? "已通过 ✓" : "已驳回")
-            store.actMessage = nil
+    private func submit() async {
+        busy = true
+        do {
+            let raw = try await Net.shared.postJSON(
+                "SIPAIIS_DataCenter/work/processAdjustment/doAuditDetail.do",
+                ["taskid": taskId,
+                 "businessid": businessId,
+                 "passstatus": "true",
+                 "auditopinion": opinion])
+            if Net.isOK(raw) {
+                app.show("审核已提交 ✓")
+                presentation.wrappedValue.dismiss()
+            } else {
+                msg = Net.message(raw)
+            }
+        } catch {
+            msg = error.localizedDescription
         }
+        busy = false
     }
 }
+
+
 
 // MARK: - 维保详情
 
