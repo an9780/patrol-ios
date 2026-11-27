@@ -1,169 +1,277 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 故障上报（NewFaultActivity）
-//
-// 流程（从 smali 提取）：
-//   1) POST SIPAIIS_DataCenter/maintenance/abnormity/dosave.do
-//        abnormityDescription, equipmentIds, patrolRecordId,
-//        patrolPointId, processSectionId, remark
-//      → 返回新记录 id
-//   2) POST SIPAIIS_DataCenter/base/updateFile.do   multipart
-//        masterId = 上一步的 id
-//        nameSpace = maintenanceproblemfile
-//        filelist = 照片
+// MARK: - 故障上报（严格照 res/layout/activity_new_fault.xml 还原）
 
 struct FaultReportScreen: View {
     @EnvironmentObject var app: AppState
     @Environment(\.presentationMode) private var presentation
 
-    @StateObject private var store = FormStore()
-    @State private var sectionOptions: [FormOption] = []
-    @State private var equipmentOptions: [FormOption] = []
+    @State private var sections: [FormOption] = []
+    @State private var equipments: [FormOption] = []
     @State private var sectionId = ""
     @State private var equipmentId = ""
     @State private var description = ""
-    @State private var remark = ""
+    @State private var photos: [UIImage] = []
     @State private var busy = false
     @State private var message: String?
+    @State private var showSectionPicker = false
+    @State private var showEquPicker = false
+
+    private let blue = Color(hex: 0x419DE4)
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                // 工艺段
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 3) {
-                        Text("工艺段").font(.system(size: 12)).foregroundColor(C.sub)
-                        Text("*").font(.system(size: 12)).foregroundColor(.red)
-                    }
-                    Menu {
-                        ForEach(sectionOptions) { o in
-                            Button(o.name) {
-                                sectionId = o.id
-                                equipmentId = ""
-                                Task { await loadEquipment(section: o.id) }
+        VStack(spacing: 0) {
+            // 标题栏
+            ZStack {
+                LinearGradient(colors: [C.gradStart, C.gradEnd],
+                               startPoint: .leading, endPoint: .trailing)
+                Text("异常上报").font(.system(size: 15)).foregroundColor(.white)
+            }
+            .frame(height: 50)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    // 表单卡
+                    VStack(alignment: .leading, spacing: 0) {
+                        // * 所属厂区
+                        HStack(spacing: 0) {
+                            Text("* 所属厂区")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10).padding(.trailing, 3)
+                                .frame(height: 35, alignment: .center)
+                            Text(app.caption.isEmpty ? app.unit : app.unit)
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        divider
+
+                        // * 上报人
+                        HStack(spacing: 0) {
+                            Text("* 上报人")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(app.caption)
+                                .font(.system(size: 16))
+                                .padding(.leading, 10)
+                                .frame(height: 35, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                        }
+
+                        divider
+
+                        // *工艺段：
+                        Button { showSectionPicker = true } label: {
+                            HStack(spacing: 0) {
+                                Text("*工艺段：")
+                                    .font(.system(size: 16))
+                                    .padding(.leading, 10)
+                                    .frame(width: 110, height: 40, alignment: .leading)
+                                Text(sections.first { $0.id == sectionId }?.name ?? "请选择")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(sectionId.isEmpty ? C.sub : .black)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Image("iv_down")
+                                    .resizable().scaledToFit()
+                                    .padding(8)
+                                    .frame(width: 30, height: 40)
+                                    .padding(.trailing, 30)
                             }
                         }
-                    } label: {
-                        pickerLabel(sectionOptions.first { $0.id == sectionId }?.name ?? "请选择工艺段")
-                    }
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+                        .buttonStyle(.plain)
 
-                // 设备
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("设备（可不选）").font(.system(size: 12)).foregroundColor(C.sub)
-                    Menu {
-                        Button("不指定设备") { equipmentId = "" }
-                        ForEach(equipmentOptions) { o in
-                            Button(o.name) { equipmentId = o.id }
+                        divider
+
+                        // 异常描述（高 135，输入框 100）
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("* 异常描述")
+                                .font(.system(size: 16))
+                                .padding(.leading, 10).padding(.trailing, 10)
+                                .frame(height: 35, alignment: .center)
+                            ZStack(alignment: .topLeading) {
+                                if description.isEmpty {
+                                    Text("填写异常描述")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(Color(hex: 0xC7C7CD))
+                                        .padding(.leading, 10).padding(.top, 8)
+                                }
+                                TextEditor(text: $description)
+                                    .font(.system(size: 16))
+                                    .padding(.leading, 4)
+                                    .frame(height: 100)
+                            }
                         }
-                    } label: {
-                        pickerLabel(equipmentOptions.first { $0.id == equipmentId }?.name ?? "不指定设备")
-                    }
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+                        .frame(height: 135, alignment: .top)
 
-                // 描述
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 3) {
-                        Text("异常描述").font(.system(size: 12)).foregroundColor(C.sub)
-                        Text("*").font(.system(size: 12)).foregroundColor(.red)
-                    }
-                    ZStack(alignment: .topLeading) {
-                        if description.isEmpty {
-                            Text("描述发现的问题…").font(.system(size: 15))
-                                .foregroundColor(C.sub.opacity(0.6))
-                                .padding(.horizontal, 14).padding(.vertical, 12)
+                        divider
+                        divider
+
+                        // 附件提示
+                        Text("点击查看附件，长按删除")
+                            .font(.system(size: 14))
+                            .padding(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                            .padding(.horizontal, 5)
+
+                        // 附件区（高 105）
+                        HStack(alignment: .center, spacing: 0) {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(Array(photos.enumerated()), id: \.offset) { idx, img in
+                                        ZStack(alignment: .topTrailing) {
+                                            Image(uiImage: img)
+                                                .resizable().scaledToFill()
+                                                .frame(width: 80, height: 100).clipped()
+                                                .cornerRadius(4)
+                                            Button { photos.remove(at: idx) } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.white)
+                                                    .background(Circle().fill(Color.black.opacity(0.5)))
+                                            }
+                                            .offset(x: 3, y: -3)
+                                        }
+                                    }
+                                }
+                                .padding(.leading, 5)
+                            }
+                            .frame(height: 100)
+
+                            Button { showCameraPicker() } label: {
+                                Image("moudle_add")
+                                    .resizable().scaledToFit()
+                                    .padding(15)
+                                    .frame(width: 60, height: 100)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        TextEditor(text: $description)
-                            .font(.system(size: 15)).frame(minHeight: 110).padding(8)
+                        .frame(height: 105)
+
+                        // 拍照按钮 65×30
+                        HStack(spacing: 0) {
+                            Button { showCameraPicker() } label: {
+                                Text("拍照")
+                                    .font(.system(size: 16)).foregroundColor(.white)
+                                    .frame(width: 65, height: 30)
+                                    .background(blue).cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.leading, 10).padding(.trailing, 10)
+                            .padding(.vertical, 5)
+                            Spacer()
+                        }
+
+                        divider
+
+                        // 故障设备
+                        Button { showEquPicker = true } label: {
+                            Text("故障设备(点击选择)")
+                                .font(.system(size: 16)).foregroundColor(blue)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .frame(height: 35)
+                        }
+                        .buttonStyle(.plain)
+
+                        HStack(spacing: 0) {
+                            Text("设备名称：")
+                                .padding(.leading, 10)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(equipments.first { $0.id == equipmentId }?.name ?? "")
+                                .padding(.leading, 10)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                        }
+
+                        HStack(spacing: 0) {
+                            Text("设备编号：")
+                                .padding(.leading, 10)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("")
+                                .padding(.leading, 10)
+                                .frame(height: 40, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(3)
+                        }
                     }
-                    .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-                    .overlay(RoundedRectangle(cornerRadius: 7)
-                        .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-                    .cornerRadius(7)
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+                    .padding(5)
+                    .background(Color.white)
+                    .overlay(Rectangle().stroke(Color(hex: 0xE5E5E5), lineWidth: 1))
+                    .padding(5)
 
-                // 备注
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("备注").font(.system(size: 12)).foregroundColor(C.sub)
-                    TextField("可选", text: $remark)
-                        .font(.system(size: 15)).padding(10)
-                        .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-                        .overlay(RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-                        .cornerRadius(7)
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
-
-                // 照片
-                PhotoStrip(photos: $store.photos)
-
-                // 提交
-                VStack(spacing: 8) {
+                    // 提交 19sp 高 40
                     Button {
                         Task { await submit() }
                     } label: {
                         HStack(spacing: 8) {
                             if busy { ProgressView().tint(.white) }
-                            Text(busy ? "提交中…" : "上报")
-                                .font(.system(size: 16, weight: .semibold))
+                            Text(busy ? "提交中…" : "提 交")
+                                .font(.system(size: 19)).foregroundColor(.white)
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(sectionId.isEmpty || description.isEmpty ? C.sub.opacity(0.4) : C.blue)
-                        .foregroundColor(.white).cornerRadius(10)
+                        .frame(maxWidth: .infinity).frame(height: 40)
+                        .background(blue).cornerRadius(3)
                     }
-                    .disabled(busy || sectionId.isEmpty || description.isEmpty)
+                    .disabled(busy || description.isEmpty)
+                    .padding(20).padding(.top, 10)
 
                     if let m = message {
-                        Text(m).font(.caption).foregroundColor(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(m).font(.system(size: 12)).foregroundColor(.red)
+                            .padding(.horizontal, 20).padding(.bottom, 20)
                     }
                 }
-                .padding(14).background(Color.white).cornerRadius(10)
             }
-            .padding(12)
+            .background(C.bg)
         }
-        .background(C.bg)
-        .navigationTitle("异常上报")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .sheet(isPresented: $showSectionPicker) {
+            OptionPicker(title: "选择工艺段", options: sections) { o in
+                sectionId = o.id
+                Task { await loadEquipments(section: o.id) }
+            }
+        }
+        .sheet(isPresented: $showEquPicker) {
+            OptionPicker(title: "选择设备", options: equipments) { o in
+                equipmentId = o.id
+            }
+        }
+        .sheet(isPresented: $showPickerCamera) {
+            CameraPicker(images: $photos, useCamera: true)
+        }
         .task { await loadSections() }
     }
 
-    private func pickerLabel(_ text: String) -> some View {
-        HStack {
-            Text(text).font(.system(size: 15))
-                .foregroundColor(text.hasPrefix("请选择") || text.hasPrefix("不指定") ? C.sub : C.text)
-            Spacer()
-            Image(systemName: "chevron.down").font(.system(size: 12)).foregroundColor(C.sub)
-        }
-        .padding(11)
-        .background(Color(red: 0.97, green: 0.98, blue: 0.99))
-        .overlay(RoundedRectangle(cornerRadius: 7)
-            .stroke(Color(red: 0.89, green: 0.91, blue: 0.94)))
-        .cornerRadius(7)
+    @State private var showPickerCamera = false
+
+    private func showCameraPicker() { showPickerCamera = true }
+
+    private var divider: some View {
+        Rectangle().fill(blue).frame(height: 0.3)
     }
+
+    // MARK: 数据
 
     private func loadSections() async {
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_DataCenter/work/processSection/getlist.do",
                 ["unitId": app.unit, "page": "1", "rows": "200"])
-            let arr = Net.array(raw, key: "rows")
-            sectionOptions = arr.compactMap {
-                let id = Net.str($0, "id")
-                let name = Net.str($0, "name")
+            sections = Net.array(raw, key: "rows").compactMap {
+                let id = Net.str($0, "id"), n = Net.str($0, "name")
                 guard !id.isEmpty else { return nil }
-                return FormOption(id: id, name: name.isEmpty ? id : name)
+                return FormOption(id: id, name: n.isEmpty ? id : n)
             }
-        } catch {
-            message = "工艺段加载失败：\(error.localizedDescription)"
-        }
+        } catch { sections = [] }
     }
 
-    private func loadEquipment(section: String) async {
+    private func loadEquipments(section: String) async {
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_Equipment/equipment/getList.do",
@@ -174,22 +282,18 @@ struct FaultReportScreen: View {
                 else if let sub = d["result"] as? [String: Any],
                         let a = sub["rows"] as? [[String: Any]] { arr = a }
             }
-            equipmentOptions = arr.compactMap {
-                let id = Net.str($0, "id")
-                let name = Net.str($0, "name")
+            equipments = arr.compactMap {
+                let id = Net.str($0, "id"), n = Net.str($0, "name")
                 guard !id.isEmpty else { return nil }
-                return FormOption(id: id, name: name.isEmpty ? id : name)
+                return FormOption(id: id, name: n.isEmpty ? id : n)
             }
-        } catch {
-            equipmentOptions = []
-        }
+        } catch { equipments = [] }
     }
 
     private func submit() async {
         busy = true
         message = nil
         do {
-            // 1) 建单
             let raw = try await Net.shared.post(
                 "SIPAIIS_DataCenter/maintenance/abnormity/dosave.do",
                 ["unitId": app.unit,
@@ -198,34 +302,23 @@ struct FaultReportScreen: View {
                  "patrolRecordId": "",
                  "patrolPointId": "",
                  "processSectionId": sectionId,
-                 "remark": remark])
+                 "remark": ""])
             let d = Net.dict(raw)
-            // 兼容：id 可能在顶层、result 或 data
             var newId = Net.str(d, "id")
             if newId.isEmpty { newId = Net.str(Net.dict(d["result"]), "id") }
-            if newId.isEmpty { newId = Net.str(Net.dict(d["data"]), "id") }
-            if newId.isEmpty {
-                // 有些实现返回 code:1 且把 id 放在字符串里
-                if Net.int(d, "code") == 1, let s = d["result"] as? String, !s.isEmpty {
-                    newId = s
-                }
-            }
+            if newId.isEmpty, let s = d["result"] as? String { newId = s }
             guard !newId.isEmpty else {
-                message = "建单返回：\(String(describing: raw).prefix(200))"
+                message = Net.message(raw)
                 busy = false
                 return
             }
-
-            // 2) 传照片
-            if !store.photos.isEmpty {
+            if !photos.isEmpty {
                 var files: [Net.UploadFile] = []
-                for (i, img) in store.photos.enumerated() {
+                for (i, img) in photos.enumerated() {
                     guard let data = img.jpegData(compressionQuality: 0.72) else { continue }
-                    files.append(Net.UploadFile(
-                        field: "filelist",
-                        filename: "IMG_\(Int(Date().timeIntervalSince1970))_\(i).jpg",
-                        mime: "image/jpeg",
-                        data: data))
+                    files.append(Net.UploadFile(field: "filelist",
+                                                filename: "IMG_\(Int(Date().timeIntervalSince1970))_\(i).jpg",
+                                                mime: "image/jpeg", data: data))
                 }
                 _ = try await Net.shared.upload(
                     "SIPAIIS_DataCenter/base/updateFile.do",
@@ -235,78 +328,47 @@ struct FaultReportScreen: View {
                              "recordId": newId],
                     files: files)
             }
-
             app.show("异常上报成功 ✓")
             busy = false
             presentation.wrappedValue.dismiss()
         } catch {
-            message = "提交失败：\(error.localizedDescription)"
+            message = error.localizedDescription
             busy = false
         }
     }
 }
 
-// MARK: - 照片条
+// MARK: - 通用单选弹窗
 
-struct PhotoStrip: View {
-    @Binding var photos: [UIImage]
-    @State private var showCamera = false
-    @State private var showLibrary = false
+struct OptionPicker: View {
+    let title: String
+    let options: [FormOption]
+    var onPick: (FormOption) -> Void
+    @Environment(\.presentationMode) private var presentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("现场照片").font(.system(size: 12)).foregroundColor(C.sub)
-            if photos.isEmpty {
-                HStack(spacing: 10) {
-                    pickerButton("拍照", "camera.fill") { showCamera = true }
-                    pickerButton("相册", "photo.on.rectangle") { showLibrary = true }
-                }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(photos.enumerated()), id: \.offset) { idx, img in
-                            ZStack(alignment: .topTrailing) {
-                                Image(uiImage: img).resizable().scaledToFill()
-                                    .frame(width: 86, height: 86).clipped().cornerRadius(6)
-                                Button { photos.remove(at: idx) } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.white)
-                                        .background(Circle().fill(Color.black.opacity(0.5)))
-                                }
-                                .offset(x: 4, y: -4)
-                            }
-                        }
-                        Button { showCamera = true } label: {
-                            Image(systemName: "camera.fill").font(.system(size: 20))
-                                .foregroundColor(C.blue)
-                                .frame(width: 86, height: 86)
-                                .background(C.cardBg).cornerRadius(6)
-                                .overlay(RoundedRectangle(cornerRadius: 6)
-                                    .stroke(C.cardBorder, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
+        NavigationView {
+            List(options) { o in
+                Button {
+                    onPick(o)
+                    presentation.wrappedValue.dismiss()
+                } label: {
+                    HStack {
+                        Text(o.name).foregroundColor(.black)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12)).foregroundColor(C.sub)
                     }
                 }
-                Text("共 \(photos.count) 张").font(.system(size: 11)).foregroundColor(C.sub)
+            }
+            .listStyle(.plain)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { presentation.wrappedValue.dismiss() }
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14).background(Color.white).cornerRadius(10)
-        .sheet(isPresented: $showCamera) { CameraPicker(images: $photos, useCamera: true) }
-        .sheet(isPresented: $showLibrary) { CameraPicker(images: $photos, useCamera: false) }
-    }
-
-    private func pickerButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 20))
-                Text(title).font(.system(size: 11))
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 18)
-            .background(C.cardBg).cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8)
-                .stroke(C.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [4])))
-        }
-        .buttonStyle(.plain)
     }
 }
