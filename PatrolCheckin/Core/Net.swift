@@ -134,7 +134,9 @@ final class Net {
 
     static func dict(_ any: Any?) -> [String: Any] {
         (any as? [String: Any]) ?? [:]
-    }    static func array(_ any: Any?, key: String? = nil) -> [[String: Any]] {
+    }
+
+    static func array(_ any: Any?, key: String? = nil) -> [[String: Any]] {
         if let k = key, let d = any as? [String: Any] {
             return (d[k] as? [[String: Any]]) ?? []
         }
