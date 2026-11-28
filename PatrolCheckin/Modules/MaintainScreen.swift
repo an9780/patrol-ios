@@ -8,14 +8,19 @@ final class MaintainStore: ObservableObject {
     @Published var loading = false
     @Published var error: String?
 
-    func load(unit: String) async {
+    func load(unit: String, start: Date, end: Date, status: String) async {
+        guard !loading else { return }
+        guard start <= end else { error = "开始日期应早于结束日期"; return }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd"
         loading = true
         error = nil
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_Equipment/maintenance/getListMaintenance.do",
                 ["page": "1", "rows": "20", "sort": "insdt", "order": "desc",
-                 "companyid": unit, "begin_time": "", "end_time": "", "status": ""])
+                 "companyid": unit, "begin_time": format.string(from: start), "end_time": format.string(from: end), "status": status])
             var arr: [[String: Any]] = []
             if let d = raw as? [String: Any] {
                 if let a = d["rows"] as? [[String: Any]] { arr = a }
@@ -35,6 +40,14 @@ final class MaintainStore: ObservableObject {
 struct MaintainScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = MaintainStore()
+    @Environment(\.dismiss) private var dismiss
+    @State private var status = ""
+    @State private var start = Calendar.current.dateInterval(of: .month, for: Date())?.start ?? Date()
+    @State private var end = Date()
+
+    private func reload() async {
+        await store.load(unit: app.unit, start: start, end: end, status: status)
+    }
 
     var body: some View {
         NavigationView {
@@ -42,9 +55,29 @@ struct MaintainScreen: View {
                 ZStack {
                     LinearGradient(colors: [C.gradStart, C.gradEnd],
                                    startPoint: .leading, endPoint: .trailing)
-                    Text("维保工单").font(.system(size: 15)).foregroundColor(.white)
+                    Text("保养工单").font(.system(size: 15)).foregroundColor(.white)
                 }
                 .frame(height: 50)
+                .overlay(alignment: .leading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "arrow.left").foregroundColor(.white).padding(.horizontal)
+                    }.accessibilityLabel("返回")
+                }
+                HStack {
+                    DatePicker("开始日期", selection: $start, displayedComponents: .date).labelsHidden()
+                    Text("至").foregroundColor(.secondary)
+                    DatePicker("结束日期", selection: $end, displayedComponents: .date).labelsHidden()
+                }.padding(.vertical, 8)
+                Picker("工单状态", selection: $status) {
+                    Text("全部").tag("")
+                    ForEach(["1", "2", "3"], id: \.self) { value in
+                        Text(statusText(value)).tag(value)
+                    }
+                }.pickerStyle(.menu)
+                Button("查询") { Task { await reload() } }.disabled(store.loading)
+                if let error = store.error, !store.rows.isEmpty {
+                    Text(error).font(.footnote).foregroundColor(.red)
+                }
 
                 if store.loading && store.rows.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,62 +101,30 @@ struct MaintainScreen: View {
             }
             .background(C.bg)
             .navigationBarHidden(true)
-            .task { await store.load(unit: app.unit) }
+            .task { await reload() }
         }
         .navigationViewStyle(.stack)
     }
 
-    /// 严格照 item_maintenance.xml
-    private func maintainCard(_ r: GenericRow) -> some View {
-        VStack(spacing: 0) {
-            // 状态 14sp 黑
-            HStack(spacing: 0) {
-                Text(r.status.isEmpty ? "待处理" : statusText(r.status))
-                    .font(.system(size: 14))
-                    .foregroundColor(.black)
-                    .padding(.leading, 14).padding(.trailing, 14)
-                    .padding(.top, 5).padding(.bottom, 3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    private func maintainCard(_ row: GenericRow) -> some View {
+        let company = Net.dict(row.raw["company"])
+        let name = Net.str(company, "name")
+        let date = Net.str(row.raw, "insdt")
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("编号：" + row.id)
+            HStack {
+                Text(name.isEmpty ? row.subtitle : name)
+                Spacer()
+                Text(statusText(row.status)).font(.subheadline)
+                    .padding(5).background(C.doingBg).cornerRadius(4)
             }
-
-            // 分隔线 0.2 #A3A1A1
-            Rectangle().fill(Color(hex: 0xA3A1A1)).frame(height: 0.2)
-
-            // 问题描述
-            VStack(alignment: .leading, spacing: 0) {
-                Text("问题描述")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: 0x858585))
-                    .padding(.leading, 5).padding(.trailing, 5).padding(.top, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(r.title)
-                    .font(.system(size: 14))
-                    .foregroundColor(.black)
-                    .padding(5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.leading, 9).padding(.trailing, 9)
-
-            // 维修结果
-            VStack(alignment: .leading, spacing: 0) {
-                Text("维修结果")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: 0x858585))
-                    .padding(.leading, 5).padding(.trailing, 5).padding(.top, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(r.subtitle)
-                    .font(.system(size: 14))
-                    .foregroundColor(.black)
-                    .padding(5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.leading, 9).padding(.trailing, 9)
+            if !date.isEmpty { Text("月份：" + String(date.prefix(10))) }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 3).fill(Color.white)
-                .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
-        )
-        .padding(5)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     private func statusText(_ s: String) -> String {

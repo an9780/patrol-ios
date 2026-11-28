@@ -14,8 +14,8 @@ struct Shift: Identifiable, Codable {
     var points: [Point] = []
 
     var rangeText: String {
-        let s = start.count >= 16 ? String(start.dropFirst(11).prefix(5)) : start
-        let e = end.count >= 16 ? String(end.dropFirst(11).prefix(5)) : end
+        let s = start.count >= 16 ? String(start.dropFirst(5).prefix(11)) : start
+        let e = end.count >= 16 ? String(end.dropFirst(5).prefix(11)) : end
         return "\(s) — \(e)"
     }
     var allPointsDone: Bool { serverStatus == "3" || (!points.isEmpty && doneCount == points.count) }
@@ -233,9 +233,9 @@ struct PatrolScreen: View {
         VStack(spacing: 0) {
             // 顶部 10dp 色带
             HStack(spacing: 0) {
-                Rectangle().fill(s.allPointsDone ? Color(hex: 0x6FDD7F) : C.bar)
+                Rectangle().fill(statusBand(s, trailing: false))
                     .frame(height: 10)
-                Rectangle().fill(s.allPointsDone ? Color(hex: 0x6FDD7F) : C.bar)
+                Rectangle().fill(statusBand(s, trailing: true))
                     .frame(height: 10)
             }
 
@@ -282,20 +282,33 @@ struct PatrolScreen: View {
         .padding(.bottom, 10)
     }
 
-    private func statusText(_ s: Shift) -> String {
-        if s.allPointsDone { return "已完成" }
-        if s.doneCount > 0 { return "进行中" }
-        return "任务未开始"
+    private func statusText(_ shift: Shift) -> String {
+        if shift.allPointsDone { return "已完成" }
+        switch shift.serverStatus {
+        case "4": return "部分巡检"
+        case "5": return "无法巡检"
+        case "2": return "执行中"
+        default: return shift.doneCount > 0 ? "执行中" : "任务未开始"
+        }
     }
-    private func statusColor(_ s: Shift) -> Color {
-        if s.allPointsDone { return Color(hex: 0x1890FF) }
-        if s.doneCount > 0 { return C.bar }
-        return C.grayText
+
+    private func statusBand(_ shift: Shift, trailing: Bool) -> Color {
+        if shift.allPointsDone { return Color(hex: 0x70D9EF) }
+        if shift.serverStatus == "4" { return trailing ? Color(hex: 0xFF666B) : C.bar }
+        if shift.serverStatus == "2" || shift.doneCount > 0 { return C.bar }
+        return Color(hex: 0xBDBDBD)
     }
-    private func statusBg(_ s: Shift) -> Color {
-        if s.allPointsDone { return Color(hex: 0xE5F0FF) }
-        if s.doneCount > 0 { return C.doingBg }
-        return Color(hex: 0xF0F0F0)
+
+    private func statusColor(_ shift: Shift) -> Color {
+        if shift.allPointsDone { return Color(hex: 0x338DA0) }
+        if shift.serverStatus == "4" { return Color(hex: 0x9A4B09) }
+        return shift.serverStatus == "2" ? C.bar : C.grayText
+    }
+
+    private func statusBg(_ shift: Shift) -> Color {
+        if shift.allPointsDone { return Color(hex: 0xDDF9FB) }
+        if shift.serverStatus == "4" { return Color(hex: 0xF8DF8B) }
+        return shift.serverStatus == "2" ? C.doingBg : Color(hex: 0xF0F0F0)
     }
 }
 

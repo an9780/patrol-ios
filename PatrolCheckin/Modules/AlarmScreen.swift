@@ -8,7 +8,16 @@ final class AlarmStore: ObservableObject {
     @Published var loading = false
     @Published var error: String?
 
-    func load(unit: String) async {
+    func load(unit: String, start: Date, end: Date, query: String, level: String) async {
+        guard !loading else { return }
+        guard start <= end else {
+            error = "开始时间应早于结束时间"
+            return
+        }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        format.dateFormat = "yyyy-MM-dd HH:mm:ss"
         loading = true
         error = nil
         do {
@@ -16,8 +25,8 @@ final class AlarmStore: ObservableObject {
                 "SIPAIIS_DataCenter/work/scadaAlarm/getAlarmListByCache.do",
                 ["unitId": unit, "page": "1", "rows": "50",
                  "sort": "insdt", "order": "desc",
-                 "stdt": "", "eddt": "", "alarmLevel": "",
-                 "alarmType": "", "subscription": "", "describe": ""])
+                 "stdt": format.string(from: start), "eddt": format.string(from: end), "alarmLevel": level,
+                 "alarmType": "", "subscription": "", "describe": query])
             if let d = raw as? [String: Any] {
                 if let a = d["rows"] as? [[String: Any]] { rows = a }
                 else if let r = d["result"] as? [String: Any],
@@ -38,17 +47,53 @@ final class AlarmStore: ObservableObject {
 struct AlarmScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = AlarmStore()
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var level = ""
+    @State private var start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    @State private var end = Date()
+
+    private func reload() async {
+        await store.load(unit: app.unit, start: start, end: end, query: query, level: level)
+    }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                ZStack {
-                    LinearGradient(colors: [C.gradStart, C.gradEnd],
-                                   startPoint: .leading, endPoint: .trailing)
-                    Text("实时报警").font(.system(size: 15)).foregroundColor(.white)
+                HStack {
+                    Button { dismiss() } label: {
+                        Image(systemName: "arrow.left").foregroundColor(.white)
+                    }
+                    .accessibilityLabel("返回")
+                    TextField("点击输入名称搜索", text: $query)
+                        .padding(7)
+                        .background(Color.white)
+                        .clipShape(Capsule())
+                        .submitLabel(.search)
+                        .onSubmit { Task { await reload() } }
+                    Button("搜索") { Task { await reload() } }.foregroundColor(.white)
                 }
+                .padding(.horizontal, 14)
                 .frame(height: 50)
-
+                .background(C.bar)
+                HStack {
+                    DatePicker("开始时间", selection: $start).labelsHidden().accessibilityLabel("开始时间")
+                    Text("至").foregroundColor(.secondary)
+                    DatePicker("结束时间", selection: $end).labelsHidden().accessibilityLabel("结束时间")
+                }
+                .padding(.vertical, 8)
+                Picker("报警级别", selection: $level) {
+                    Text("全部").tag("")
+                    ForEach(1...4, id: \.self) { index in
+                        Text(levelName(String(index))).tag(String(index))
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: level) { _ in Task { await reload() } }
+                .disabled(store.loading)
+                if let error = store.error, !store.rows.isEmpty {
+                    Text(error).font(.footnote).foregroundColor(.red)
+                }
                 if store.loading && store.rows.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if store.rows.isEmpty {
@@ -67,11 +112,12 @@ struct AlarmScreen: View {
                             }
                         }
                     }
+                    .refreshable { await reload() }
                 }
             }
             .background(C.bg)
             .navigationBarHidden(true)
-            .task { await store.load(unit: app.unit) }
+            .task { await reload() }
         }
         .navigationViewStyle(.stack)
     }
@@ -87,7 +133,7 @@ struct AlarmScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 // 时间 + 状态
                 HStack(spacing: 0) {
-                    Text(Net.str(d, "insdt"))
+                    Text(String(Net.str(d, "insdt").prefix(16)))
                         .font(.system(size: 13))
                         .foregroundColor(C.grayText)
                         .padding(.leading, 8).padding(.trailing, 8)
@@ -102,13 +148,13 @@ struct AlarmScreen: View {
 
                 // 级别 + 类型
                 HStack(spacing: 0) {
-                    Text(Net.str(d, "alarmLevel"))
+                    Text(levelName(Net.str(d, "alarmLevel")))
                         .font(.system(size: 13))
                         .foregroundColor(Color(hex: 0xE0796C))
                         .padding(.leading, 8).padding(.trailing, 8)
                         .padding(.top, 3).padding(.bottom, 3)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(Net.str(d, "alarmType"))
+                    Text(Net.str(d, "alarmTypeLv1").isEmpty ? Net.str(d, "alarmType") : Net.str(d, "alarmTypeLv1"))
                         .font(.system(size: 13))
                         .foregroundColor(Color(hex: 0x67686C))
                         .padding(.leading, 8).padding(.trailing, 8)
@@ -129,5 +175,8 @@ struct AlarmScreen: View {
         )
         .padding(.leading, 8).padding(.trailing, 8)
         .padding(.top, 3).padding(.bottom, 2)
+    }
+    private func levelName(_ value: String) -> String {
+        ["1": "一级报警", "2": "二级报警", "3": "三级报警", "4": "四级报警"][value] ?? value
     }
 }

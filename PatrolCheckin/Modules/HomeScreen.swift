@@ -17,19 +17,32 @@ final class HomeStore: ObservableObject {
                 "SIPAIIS_Patrol/timeEfficiency/patrolRecord/getPatrolRecord4APP.do",
                 ["unitId": unit, "userid": Net.shared.userid, "type": "P",
                  "patrolDate": date, "page": "1", "rows": "100"])
-            let arr = Net.array(raw, key: "content1")
+            guard let tasks = Net.dict(raw)["content1"], !(tasks is NSNull) else {
+                throw APIError.message("服务未返回今日任务")
+            }
+            let arr = Net.array(tasks)
             total = arr.count
             var done = 0
             for t in arr {
                 let st = Net.str(t, "status")
-                if st == "4" { done += 1 }
+                if st == "3" || st == "4" { done += 1 }
             }
             submitted = done
             unsubmitted = max(0, total - done)
             loadError = nil
             currentTask = ""
             duration = ""
-            if let cur = arr.first {
+            let clock = DateFormatter()
+            clock.locale = Locale(identifier: "en_US_POSIX")
+            clock.timeZone = TimeZone(identifier: "Asia/Shanghai")
+            clock.dateFormat = "yyyy-MM-dd HH:mm"
+            let now = clock.string(from: Date())
+            if let cur = arr.first(where: {
+                let start = Net.str($0, "startTime").replacingOccurrences(of: "T", with: " ")
+                let end = Net.str($0, "endTime").replacingOccurrences(of: "T", with: " ")
+                return start.count >= 16 && end.count >= 16
+                    && String(start.prefix(16)) <= now && now < String(end.prefix(16))
+            }) {
                 currentTask = Net.str(cur, "name")
                 let s = Net.str(cur, "startTime")
                 let e = Net.str(cur, "endTime")
@@ -109,7 +122,7 @@ struct HomeScreen: View {
                     HStack(spacing: 0) {
                         Text("当前任务: ")
                             .font(.system(size: 13)).foregroundColor(.black)
-                        Text(store.duration)
+                        Text(store.duration.isEmpty ? "暂无" : store.duration)
                             .font(.system(size: 12)).foregroundColor(Color(hex: 0x808388))
                         Spacer()
                     }
@@ -118,7 +131,7 @@ struct HomeScreen: View {
                     HStack(spacing: 0) {
                         Text("任务")
                             .font(.system(size: 12)).foregroundColor(.black)
-                        Text(store.currentTask)
+                        Text(store.currentTask.isEmpty ? "暂无任务" : store.currentTask)
                             .font(.system(size: 12)).foregroundColor(Color(hex: 0x808388))
                             .padding(.leading, 4)
                         Spacer()
