@@ -37,7 +37,8 @@ struct HomePlantReadings: View {
                 Button("重试") { Task { await load() } }
             } else if let rows = readings[Category.allCases[selection]], !rows.isEmpty {
                 ForEach(rows.indices, id: \.self) { index in
-                    HStack(alignment: .firstTextBaseline) {
+                    HStack(spacing: 9) {
+                        PlantReadingIcon(name: rows[index].name)
                         Text(rows[index].name)
                         Spacer(minLength: 12)
                         PlantReadingValue(name: rows[index].name, value: rows[index].value, digital: rows[index].digital)
@@ -114,5 +115,29 @@ struct PlantReadingValue: View {
         } else {
             Text(value.isEmpty ? "—" : value).monospacedDigit().foregroundColor(.secondary)
         }
+    }
+}
+
+struct PlantReadingIcon: View {
+    let name: String
+
+    private var asset: String {
+        let text = name.lowercased()
+        let types: [(String, [String])] = [
+            ("iv_temp", ["温度"]), ("iv_nh3", ["氨氮", "nh3"]),
+            ("iv_cod", ["cod"]), ("iv_ph", ["ph"]),
+            ("iv_tp", ["总磷", "tp"]), ("iv_tn", ["总氮", "tn"]),
+            ("iv_mlss", ["污泥浓度", "mlss"]), ("iv_do", ["溶解氧", "do1", "do2"]),
+            ("iv_hz", ["频率", "hz"]), ("iv_airflow", ["风量"]),
+            ("iv_flow", ["流量"]), ("iv_liqu", ["液位"]),
+            ("iv_ele", ["电流", "电压", "电度表"]), ("iv_pa", ["压力"])
+        ]
+        return types.first { type in type.1.contains { text.contains($0) } }?.0 ?? "iv_eqp"
+    }
+
+    var body: some View {
+        Image(asset).resizable().scaledToFit()
+            .frame(width: 29, height: 29)
+            .accessibilityHidden(true)
     }
 }

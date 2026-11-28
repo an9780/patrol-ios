@@ -110,7 +110,8 @@ struct ProductionMonitoringScreen: View {
         NavigationLink {
             PointHistoryScreen(pointId: point.id, pointName: point.name)
         } label: {
-            HStack {
+            HStack(spacing: 9) {
+                PlantReadingIcon(name: point.name)
                 Text(point.name)
                 Spacer()
                 PlantReadingValue(name: point.name, value: point.value, digital: point.digital)
