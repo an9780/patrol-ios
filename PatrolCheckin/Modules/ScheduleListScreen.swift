@@ -70,7 +70,7 @@ struct ScheduleListScreen: View {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(store.rows.enumerated()), id: \.offset) { _, d in
                             NavigationLink {
-                                ScheduleDetailScreen(scheduleId: Net.str(d, "id"))
+                                DispatchDetailScreen(orderId: Net.str(d, "id"), previewContents: Net.str(d, "contents"))
                                     .environmentObject(app)
                             } label: {
                                 card(d)

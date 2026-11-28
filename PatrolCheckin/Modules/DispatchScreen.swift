@@ -17,35 +17,29 @@ import UIKit
 
 struct DispatchOrder: Identifiable {
     let id: String
+    let businessId: String
+    let taskId: String
     let contents: String
-    let status: String
-    let typeName: String
-    let targetuser: String
-    let targetName: String
-    let targetcompanyid: String
+    let statusText: String
     let company: String
     let insdt: String
-    let stdt: String
-    let eddt: String
 
-    var isMine: Bool { targetuser == Net.shared.userid }
-
-    var statusText: String {
-        switch status {
-        case "1": return "进行中"
-        case "2": return "已完成"
-        case "3": return "已关闭"
-        default:  return status.isEmpty ? "进行中" : status
-        }
-    }
-
-    var manText: String { targetName.isEmpty ? targetuser : targetName }
-
-    var dateText: String {
-        let s = stdt.count >= 10 ? String(stdt.prefix(10)) : stdt
-        let e = eddt.count >= 10 ? String(eddt.prefix(10)) : eddt
-        if s.isEmpty && e.isEmpty { return insdt }
-        return s == e ? s : "\(s) 至 \(e)"
+    init?(_ row: [String: Any]) {
+        let task = Net.dict(row["task"])
+        let business = Net.dict(row["businessEntity"])
+        let company = Net.dict(business["targetCompany"])
+        let businessId = Net.str(row, "businessId")
+        let entityId = Net.str(business, "id")
+        self.businessId = businessId.isEmpty ? entityId : businessId
+        guard !self.businessId.isEmpty else { return nil }
+        taskId = Net.str(task, "id")
+        id = taskId.isEmpty ? self.businessId : taskId
+        contents = Net.str(business, "contents")
+        let taskName = Net.str(task, "name")
+        statusText = taskName.isEmpty ? Net.str(row, "name") : taskName
+        let companyName = Net.str(company, "name")
+        self.company = companyName.isEmpty ? Net.str(company, "sname") : companyName
+        insdt = Net.str(task, "createTime")
     }
 }
 
@@ -89,7 +83,7 @@ final class DispatchStore: ObservableObject {
     // MARK: 列表
     /// 照 j5/a.smali：调度单页签走 processAdjustment/getTaskList.do
     /// 参数 page / rows / sort / order / taskIds
-    func loadList(unit: String) async {
+    func loadList() async {
         loading = true
         listError = nil
         do {
@@ -98,52 +92,27 @@ final class DispatchStore: ObservableObject {
                 ["page": "1", "rows": "50", "sort": "insdt",
                  "order": "desc", "taskIds": ""])
 
-            // 返回是 {code,msg,result:{total,rows}}，每行是 {id, task:{}, businessEntity:{}}
-            var arr: [[String: Any]] = []
-            if let d = raw as? [String: Any] {
-                if let r = d["result"] as? [String: Any],
-                   let rows = r["rows"] as? [[String: Any]] {
-                    arr = rows
-                } else if let rows = d["rows"] as? [[String: Any]] {
-                    arr = rows
-                }
+            let result = Net.dict(Net.dict(raw)["result"])
+            guard let records = result["rows"] ?? Net.dict(raw)["rows"], !(records is NSNull) else {
+                throw APIError.message(Net.message(raw))
             }
-
-            orders = arr.map { d in
-                let task = Net.dict(d["task"])
-                let be = Net.dict(d["businessEntity"])
-                let company = Net.dict(be["targetCompany"])
-                return DispatchOrder(
-                    id: Net.str(d, "id").isEmpty ? Net.str(task, "id") : Net.str(d, "id"),
-                    contents: Net.str(be, "contents"),
-                    status: Net.str(be, "status"),
-                    typeName: Net.str(be, "typeName"),
-                    targetuser: Net.str(be, "targetuser"),
-                    targetName: Net.str(be, "targetUserName"),
-                    targetcompanyid: Net.str(be, "targetcompanyid"),
-                    company: Net.str(company, "sname"),
-                    insdt: Net.str(task, "createTime"),
-                    stdt: Net.str(be, "stdt"),
-                    eddt: Net.str(be, "eddt"))
-            }
+            orders = Net.array(records).compactMap(DispatchOrder.init)
         } catch {
             listError = error.localizedDescription
         }
         loading = false
     }
 
-    var mine: [DispatchOrder] { orders.filter { $0.isMine && $0.status == "1" } }
-    var others: [DispatchOrder] { orders.filter { !($0.isMine && $0.status == "1") } }
-
     // MARK: 详情
     func loadDetail(_ id: String) async {
         loading = true
         detailError = nil
         do {
-            let raw = try await Net.shared.post(
+            let raw = try await Net.shared.get(
                 "SIPAIIS_DataCenter/work/processAdjustment/showView.do", ["id": id])
             let res = Net.dict(Net.dict(raw)["result"])
             let be = Net.dict(res["businessEntity"])
+            guard !be.isEmpty else { throw APIError.message(Net.message(raw)) }
             contents = Net.str(be, "contents")
             status = Net.str(be, "status")
 
@@ -164,7 +133,7 @@ final class DispatchStore: ObservableObject {
                 return a == b ? a : "\(a) 至 \(b)"
             }()
             detailRows = [
-                ("调度厂区：", Net.str(comp, "sname")),
+                ("调度厂区：", Net.str(comp, "name").isEmpty ? Net.str(comp, "sname") : Net.str(comp, "name")),
                 ("调度类型：", Net.str(be, "typeName")),
                 ("调度等级：", lvl),
                 ("调度日期：", d0),
@@ -200,13 +169,14 @@ final class DispatchStore: ObservableObject {
     }
 
     /// 当前可操作的步骤（最后一条带 taskid 的）
-    var currentStep: FlowStep? {
-        steps.last { $0.isActionable }
+    func currentStep(taskId: String?) -> FlowStep? {
+        guard let taskId = taskId, !taskId.isEmpty else { return nil }
+        return steps.last { $0.isActionable && $0.taskid == taskId }
     }
 
     // MARK: 上传
-    func uploadPhotos(_ images: [UIImage], orderId: String) async -> Bool {
-        guard let step = currentStep else {
+    func uploadPhotos(_ images: [UIImage], orderId: String, taskId: String?) async -> Bool {
+        guard let step = currentStep(taskId: taskId) else {
             detailError = "没有待办步骤，无法上传"
             return false
         }
@@ -246,8 +216,8 @@ final class DispatchStore: ObservableObject {
     }
 
     // MARK: 提交
-    func submit(orderId: String, opinion: String) async -> Bool {
-        guard let step = currentStep else {
+    func submit(orderId: String, taskId: String?, opinion: String) async -> Bool {
+        guard let step = currentStep(taskId: taskId) else {
             detailError = "没有待办步骤"
             return false
         }
@@ -323,7 +293,7 @@ struct DispatchScreen: View {
                 LazyVStack(spacing: 6) {
                     ForEach(visibleOrders) { order in
                         NavigationLink {
-                            DispatchDetailScreen(orderId: order.id, previewContents: order.contents)
+                            DispatchDetailScreen(orderId: order.businessId, previewContents: order.contents, taskId: order.taskId)
                         } label: {
                             card(order)
                         }
@@ -334,8 +304,8 @@ struct DispatchScreen: View {
             }
         }
         .background(C.bg)
-        .task(id: app.unit) { await store.loadList(unit: app.unit) }
-        .refreshable { await store.loadList(unit: app.unit) }
+        .task(id: app.unit) { await store.loadList() }
+        .refreshable { await store.loadList() }
     }
 
     private func card(_ order: DispatchOrder) -> some View {
@@ -363,10 +333,10 @@ struct DispatchScreen: View {
 
 struct DispatchDetailScreen: View {
     @State private var showAudit = false
-    @State private var auditTaskId = ""
     @EnvironmentObject var app: AppState
     let orderId: String
     var previewContents: String = ""
+    var taskId: String? = nil
 
     @StateObject private var store = DispatchStore()
     @State private var picked: [UIImage] = []
@@ -375,7 +345,7 @@ struct DispatchDetailScreen: View {
     @State private var opinion = "已完成"
 
     private var canAct: Bool {
-        store.currentStep != nil && !store.uploading && !store.submitting
+        store.currentStep(taskId: taskId) != nil && !store.uploading && !store.submitting
     }
 
     var body: some View {
@@ -458,109 +428,112 @@ struct DispatchDetailScreen: View {
                 )
                 .padding(8)
 
-                // 拍照区
-                VStack(spacing: 10) {
-                    if picked.isEmpty {
-                        Button {
-                            showCamera = true
-                        } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: "camera.fill").font(.system(size: 30))
-                                Text("拍照").font(.system(size: 15, weight: .medium))
-                                Text("拍完点下面「上传并完成」").font(.system(size: 11))
-                                    .foregroundColor(C.sub)
+                if let taskId = taskId, !taskId.isEmpty {
+                    // 拍照区
+                    VStack(spacing: 10) {
+                        if picked.isEmpty {
+                            Button {
+                                showCamera = true
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "camera.fill").font(.system(size: 30))
+                                    Text("拍照").font(.system(size: 15, weight: .medium))
+                                    Text("拍完点下面「上传并完成」").font(.system(size: 11))
+                                        .foregroundColor(C.sub)
+                                }
+                                .frame(maxWidth: .infinity).padding(.vertical, 26)
+                                .background(C.cardBg).cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10)
+                                    .stroke(C.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [5])))
                             }
-                            .frame(maxWidth: .infinity).padding(.vertical, 26)
-                            .background(C.cardBg).cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10)
-                                .stroke(C.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [5])))
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(Array(picked.enumerated()), id: \.offset) { idx, img in
-                                    ZStack(alignment: .topTrailing) {
-                                        Image(uiImage: img)
-                                            .resizable().scaledToFill()
-                                            .frame(width: 92, height: 92).clipped()
-                                            .cornerRadius(8)
-                                        Button {
-                                            picked.remove(at: idx)
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .foregroundColor(.white)
-                                                .background(Circle().fill(Color.black.opacity(0.5)))
+                            .buttonStyle(.plain)
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(Array(picked.enumerated()), id: \.offset) { idx, img in
+                                        ZStack(alignment: .topTrailing) {
+                                            Image(uiImage: img)
+                                                .resizable().scaledToFill()
+                                                .frame(width: 92, height: 92).clipped()
+                                                .cornerRadius(8)
+                                            Button {
+                                                picked.remove(at: idx)
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.white)
+                                                    .background(Circle().fill(Color.black.opacity(0.5)))
+                                            }
+                                            .offset(x: 4, y: -4)
                                         }
-                                        .offset(x: 4, y: -4)
                                     }
-                                }
-                                Button {
-                                    showCamera = true
-                                } label: {
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "camera.fill")
-                                        Text("继续拍").font(.system(size: 10))
+                                    Button {
+                                        showCamera = true
+                                    } label: {
+                                        VStack(spacing: 4) {
+                                            Image(systemName: "camera.fill")
+                                            Text("继续拍").font(.system(size: 10))
+                                        }
+                                        .frame(width: 92, height: 92)
+                                        .background(C.cardBg).cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8)
+                                            .stroke(C.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [4])))
                                     }
-                                    .frame(width: 92, height: 92)
-                                    .background(C.cardBg).cornerRadius(8)
-                                    .overlay(RoundedRectangle(cornerRadius: 8)
-                                        .stroke(C.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [4])))
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
+                            }
+                            HStack {
+                                Text("已拍 \(picked.count) 张").font(.system(size: 12)).foregroundColor(C.sub)
+                                Spacer()
+                                Button("从相册选") { showLibrary = true }
+                                    .font(.system(size: 12)).foregroundColor(C.blue)
                             }
                         }
-                        HStack {
-                            Text("已拍 \(picked.count) 张").font(.system(size: 12)).foregroundColor(C.sub)
-                            Spacer()
-                            Button("从相册选") { showLibrary = true }
-                                .font(.system(size: 12)).foregroundColor(C.blue)
-                        }
                     }
-                }
-                .padding(14).background(Color.white).cornerRadius(10)
+                    .padding(14).background(Color.white).cornerRadius(10)
 
-                // 提交
-                VStack(spacing: 10) {
-                    Button {
-                        Task {
-                            if !picked.isEmpty {
-                                let up = await store.uploadPhotos(picked, orderId: orderId)
-                                guard up else { return }
+                    // 提交
+                    VStack(spacing: 10) {
+                        Button {
+                            Task {
+                                if !picked.isEmpty {
+                                    let up = await store.uploadPhotos(picked, orderId: orderId, taskId: taskId)
+                                    guard up else { return }
+                                }
+                                let ok = await store.submit(orderId: orderId, taskId: taskId, opinion: opinion)
+                                if ok {
+                                    app.show("调度单已完成 ✓")
+                                    picked = []
+                                    await store.loadDetail(orderId)
+                                }
                             }
-                            let ok = await store.submit(orderId: orderId, opinion: opinion)
-                            if ok {
-                                app.show("调度单已完成 ✓")
-                                picked = []
-                                await store.loadDetail(orderId)
+                        } label: {
+                            HStack(spacing: 8) {
+                                if store.uploading || store.submitting {
+                                    ProgressView().tint(.white)
+                                }
+                                Text(store.uploading ? "上传中…"
+                                     : store.submitting ? "提交中…"
+                                     : "上传并完成")
+                                    .font(.system(size: 16, weight: .semibold))
                             }
+                            .frame(maxWidth: .infinity).padding(.vertical, 15)
+                            .background(canAct ? C.blue : C.sub.opacity(0.4))
+                            .foregroundColor(.white).cornerRadius(10)
                         }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if store.uploading || store.submitting {
-                                ProgressView().tint(.white)
-                            }
-                            Text(store.uploading ? "上传中…"
-                                 : store.submitting ? "提交中…"
-                                 : "上传并完成")
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity).padding(.vertical, 15)
-                        .background(canAct ? C.blue : C.sub.opacity(0.4))
-                        .foregroundColor(.white).cornerRadius(10)
-                    }
-                    .disabled(!canAct)
+                        .disabled(!canAct)
 
-                    if store.currentStep == nil && !store.loading {
-                        Text("这张单没有待办步骤，可能已处理完毕")
-                            .font(.caption).foregroundColor(.orange)
+                        if store.currentStep(taskId: taskId) == nil && !store.loading {
+                            Text("这张单没有待办步骤，可能已处理完毕")
+                                .font(.caption).foregroundColor(.orange)
+                        }
+
                     }
-                    if let e = store.detailError {
-                        Text(e).font(.caption).foregroundColor(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    .padding(14).background(Color.white).cornerRadius(10)
                 }
-                .padding(14).background(Color.white).cornerRadius(10)
+                if let error = store.detailError {
+                    Text(error).font(.caption).foregroundColor(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 // 流程记录
                 if !store.steps.isEmpty {
@@ -609,13 +582,15 @@ struct DispatchDetailScreen: View {
         .task { await store.loadDetail(orderId) }
         .sheet(isPresented: $showAudit) {
             NavigationView {
-                ScheduleAuditScreen(taskId: auditTaskId, businessId: orderId)
+                ScheduleAuditScreen(taskId: taskId ?? "", businessId: orderId)
                     .environmentObject(app)
             }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("审核") { auditTaskId = orderId; showAudit = true }
+                if store.currentStep(taskId: taskId) != nil {
+                    Button("审核") { showAudit = true }
+                }
             }
         }
     }
