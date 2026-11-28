@@ -116,7 +116,8 @@ final class DetailStore: ObservableObject {
             let any = try await Net.shared.post(path, params)
             var d = Net.dict(any)
             // 常见包裹：result / data
-            if let r = d["result"] as? [String: Any] { d = r }
+            if let row = Net.array(d, key: "result").first { d = row }
+            else if let r = d["result"] as? [String: Any] { d = r }
             else if let r = d["data"] as? [String: Any] { d = r }
             raw = d
             fields = makeDetailFields(d, order: labelOrder)
@@ -803,8 +804,8 @@ struct HistoryDetailScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await store.load(
-                path: "SIPAIIS_Equipment/maintenance/getMaintenanceDetailList.do",
-                params: ["id": recordId, "page": "1", "rows": "10"])
+                path: "SIPAIIS_Equipment/maintenance/showMaintenanceDetailView.do",
+                params: ["id": recordId])
         }
     }
 }

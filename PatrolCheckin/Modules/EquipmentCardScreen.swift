@@ -10,6 +10,7 @@ struct EquipmentCardScreen: View {
 
     @StateObject private var store = DetailStore()
     @State private var tab = 0
+    @State private var recordsError: String?
     @State private var records: [[String: Any]] = []
     @State private var points: [[String: Any]] = []
     @State private var loadingOthers = false
@@ -66,8 +67,8 @@ struct EquipmentCardScreen: View {
         .navigationBarHidden(true)
         .task {
             await store.load(
-                path: "SIPAIIS_Equipment/equipment/getEquipmentById.do",
-                params: ["id": equipmentId, "unitId": app.unit])
+                path: "SIPAIIS_Equipment/equipment/doview4Id.do",
+                params: ["id": equipmentId])
             await loadOthers()
         }
     }
@@ -75,8 +76,10 @@ struct EquipmentCardScreen: View {
     // 设备详情：15sp 标签 : 15sp 值，40dp 行，0.3dp 分隔线
     private var detailTab: some View {
         Group {
-            if store.fields.isEmpty {
+            if store.loading {
                 ProgressView().padding(.vertical, 40)
+            } else if store.fields.isEmpty {
+                EmptyHint(text: store.error ?? "暂无设备详情")
             } else {
                 ForEach(Array(store.fields.prefix(14).enumerated()), id: \.offset) { _, f in
                     HStack(spacing: 0) {
@@ -102,7 +105,7 @@ struct EquipmentCardScreen: View {
     private var recordTab: some View {
         Group {
             if records.isEmpty {
-                Text(loadingOthers ? "加载中…" : "暂无维修记录")
+                Text(loadingOthers ? "加载中…" : (recordsError ?? "暂无维修记录"))
                     .font(.system(size: 14)).foregroundColor(C.grayText)
                     .frame(maxWidth: .infinity).padding(.vertical, 40)
             } else {
@@ -135,8 +138,8 @@ struct EquipmentCardScreen: View {
             } else {
                 ForEach(Array(points.enumerated()), id: \.offset) { _, d in
                     MeasurePointRow(
-                        name: Net.str(d, "pointName").isEmpty ? Net.str(d, "name") : Net.str(d, "pointName"),
-                        value: Net.str(d, "value"))
+                        name: Net.str(d, "parmname").isEmpty ? Net.str(d, "name") : Net.str(d, "parmname"),
+                        value: Net.str(d, "parmvalue"))
                 }
             }
         }
@@ -144,24 +147,15 @@ struct EquipmentCardScreen: View {
 
     private func loadOthers() async {
         loadingOthers = true
-        if let raw = try? await Net.shared.post(
-            "SIPAIIS_Equipment/maintenance/getListMaintenance.do",
-            ["page": "1", "rows": "50", "sort": "insdt", "order": "desc",
-             "companyid": app.unit, "begin_time": "", "end_time": "", "status": ""]) {
-            if let d = raw as? [String: Any],
-               let a = d["rows"] as? [[String: Any]] {
-                records = a.filter {
-                    let eid = Net.str($0, "equipmentId")
-                    return eid.isEmpty || eid == equipmentId
-                }
-            }
-        }
-        if let raw = try? await Net.shared.post(
-            "SIPAIIS_DataCenter/work/processSection/getEquPointByEquId.do",
-            ["equipmentId": equipmentId]) {
-            if let a = raw as? [[String: Any]] { points = a }
-            else if let d = raw as? [String: Any],
-                    let a = d["rows"] as? [[String: Any]] { points = a }
+        points = Net.array(store.raw, key: "mPoint4APP")
+        do {
+            let raw = try await Net.shared.post(
+                "SIPAIIS_Equipment/maintenance/getMaintenanceDetailList.do",
+                ["page": "1", "rows": "50", "sort": "id", "type": "2",
+                 "order": "desc", "unitId": app.unit, "equipmentId": equipmentId])
+            records = Net.array(raw, key: "rows")
+        } catch {
+            recordsError = error.localizedDescription
         }
         loadingOthers = false
     }

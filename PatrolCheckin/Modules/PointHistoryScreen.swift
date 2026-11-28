@@ -110,22 +110,15 @@ struct PointHistoryScreen: View {
         error = nil
         do {
             let raw = try await Net.shared.post(
-                "SIPAIIS_DataCenter/work/processSection/getMPointHistoryData.do",
-                ["mPointId": pointId,
-                 "startTime": dateFmt.string(from: start),
-                 "endTime": dateFmt.string(from: end)])
-            var arr: [[String: Any]] = []
-            if let a = raw as? [[String: Any]] { arr = a }
-            else if let d = raw as? [String: Any] {
-                if let a = d["rows"] as? [[String: Any]] { arr = a }
-                else if let r = d["result"] as? [String: Any],
-                        let a = r["rows"] as? [[String: Any]] { arr = a }
-            }
-            values = arr.compactMap { d in
-                let t = Net.str(d, "insdt")
-                let v = Double(Net.str(d, "value")) ?? Double(Net.str(d, "mvalue")) ?? 0
-                return (t, v)
-            }
+                "SIPAIIS_DataCenter/work/mpoint/getHistory.do",
+                ["bizId": app.unit, "ids": pointId, "sort": "insdt", "order": "desc",
+                 "sdt": dateFmt.string(from: start), "edt": dateFmt.string(from: end)])
+            let arr = (raw as? [[[String: Any]]])?.first ?? Net.array(raw)
+            values = arr.compactMap { record in
+                let time = Net.str(record, "measuredt")
+                guard let value = Double(Net.str(record, "parmvalue")), value.isFinite else { return nil }
+                return (time, value)
+            }.sorted { $0.0 < $1.0 }
         } catch {
             self.error = error.localizedDescription
         }

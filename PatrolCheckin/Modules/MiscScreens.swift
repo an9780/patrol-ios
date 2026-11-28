@@ -369,7 +369,8 @@ struct EquipmentSearchScreen: View {
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_Equipment/equipment/getList.do",
-                ["unitId": app.unit, "search_name": keyword, "page": "1", "rows": "100"])
+                ["unitId": app.unit, "search_name": keyword, "page": "1", "rows": "100",
+                 "pSectionId": "", "equipmentCardClass": "", "sort": "insdt", "order": "desc"])
             var arr: [[String: Any]] = []
             if let d = raw as? [String: Any] {
                 if let a = d["rows"] as? [[String: Any]] { arr = a }

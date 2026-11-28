@@ -7,7 +7,10 @@ workflows:
       xcode: latest
     scripts:
       - name: Build and verify device IPA
-        script: bash ci/build-ipa.sh
+        script: |
+          mkdir -p dist
+          set -o pipefail
+          bash -x ci/build-ipa.sh 2>&1 | tee dist/build.log
       - name: Exercise the local patrol flow on iPhone simulator
         script: bash ci/simulator.sh
     artifacts:
@@ -15,5 +18,6 @@ workflows:
       - dist/XcodeProject.zip
       - dist/SHA256.txt
       - dist/commit.txt
+      - dist/build.log
       - dist/screenshots/*.png
       - dist/Smoke.xcresult
