@@ -30,6 +30,7 @@ struct Point: Identifiable, Codable {
     var status: String
     var worker: String
     var finish: String
+    var kind: String? = nil
 
     var isDone: Bool { status == "3" }
     var timeText: String {
@@ -103,7 +104,7 @@ final class PatrolStore: ObservableObject {
                   area: Net.str(Net.dict(d["processSection"]), "name"),
                   status: Net.str(d, "status"),
                   worker: Net.str(d, "workerId"),
-                  finish: Net.str(d, "finishDt"))
+                  finish: Net.str(d, "finishDt"), kind: Net.str(d, "type"))
         }
     }
 
@@ -425,13 +426,7 @@ struct PatrolDetailScreen: View {
         .task { await loadDetails() }
         .sheet(item: $pointInfo) { p in
             NavigationView {
-                List {
-                    Text(p.name)
-                    Text(p.area)
-                    Text(p.dateLine)
-                    Text("正式巡检请通过现场核验流程提交。").font(.footnote)
-                }
-                .navigationTitle("巡检点详情")
+                PatrolPointDataScreen(point: p, shiftID: shiftId, unit: app.unit)
                 .toolbar { Button("关闭") { pointInfo = nil } }
             }
         }
