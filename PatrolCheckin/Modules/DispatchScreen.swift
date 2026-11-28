@@ -466,6 +466,8 @@ struct DispatchScreen: View {
 // MARK: - 调度单详情（拍照 → 上传 → 完成）
 
 struct DispatchDetailScreen: View {
+    @State private var showAudit = false
+    @State private var auditTaskId = ""
     @EnvironmentObject var app: AppState
     let orderId: String
     var previewContents: String = ""
