@@ -711,6 +711,17 @@ struct DispatchDetailScreen: View {
             CameraPicker(images: $picked, useCamera: false)
         }
         .task { await store.loadDetail(orderId) }
+        .sheet(isPresented: $showAudit) {
+            NavigationView {
+                ScheduleAuditScreen(taskId: auditTaskId, businessId: orderId)
+                    .environmentObject(app)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("审核") { auditTaskId = orderId; showAudit = true }
+            }
+        }
     }
 }
 
