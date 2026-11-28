@@ -7,6 +7,7 @@ struct MyScreen: View {
     @AppStorage("alarmSoundEnabled") private var voiceOn = true
     @State private var showAbout = false
     @State private var showKnowledge = false
+    @State private var confirmExit = false
 
     private let titleColor = Color(hex: 0x373A3D)
     private let lineColor = Color(hex: 0xE5E5E5)
@@ -38,10 +39,10 @@ struct MyScreen: View {
                         Text(app.caption.isEmpty ? app.user : app.caption)
                             .font(.system(size: 14)).foregroundColor(.black)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("累计登录时长 0 分钟")
+                        Text("登录时长：  " + (app.totalLoginHours.isEmpty ? "—" : app.totalLoginHours + " 小时"))
                             .font(.system(size: 12)).foregroundColor(.black)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("最近登录 " + app.date)
+                        Text("上次登录：  " + app.lastLogin)
                             .font(.system(size: 12)).foregroundColor(.black)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Spacer()
@@ -75,16 +76,7 @@ struct MyScreen: View {
                         menuRow("切换登录", "moudle_switch", showArrow: true) { app.logout() }
                         divider
 
-                        Button {
-                            app.logout()
-                        } label: {
-                            HStack(spacing: 0) {
-                                Image(systemName: "power").foregroundColor(C.blue).frame(width: 44, height: 44)
-                                Text("退出").font(.system(size: 14)).foregroundColor(titleColor)
-                                Spacer()
-                                Image(systemName: "chevron.right").foregroundColor(C.grayText).frame(width: 44)
-                            }
-                        }.buttonStyle(.plain)
+                        menuRow("退出", "moudle_exit", showArrow: true) { confirmExit = true }
                     }
                     .background(Color.white)
                     .padding(.horizontal, 10)
@@ -95,6 +87,10 @@ struct MyScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .confirmationDialog("是否确认退出？", isPresented: $confirmExit, titleVisibility: .visible) {
+            Button("退出", role: .destructive) { app.logout() }
+            Button("取消", role: .cancel) {}
+        }
         .sheet(isPresented: $showAbout) {
             NavigationView { AboutScreen() }
         }

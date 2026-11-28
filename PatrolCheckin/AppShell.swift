@@ -44,6 +44,8 @@ extension Color {
 final class AppState: ObservableObject {
     @Published var loggedIn = false
     @Published var caption = ""
+    @Published private(set) var totalLoginHours = ""
+    @Published private(set) var lastLogin = ""
     @Published var unit: String
     @Published private(set) var plants: [FormOption] = []
     @Published private(set) var plantError: String?
@@ -88,6 +90,8 @@ final class AppState: ObservableObject {
             unit = initialUnit.id
             date = AppState.today()
             caption = r.caption
+            totalLoginHours = r.totalLoginHours
+            lastLogin = r.lastLogin
             loggedIn = true
             UserDefaults.standard.set(user, forKey: "user")
         } catch {
@@ -112,6 +116,8 @@ final class AppState: ObservableObject {
 
     func logout() {
         plants = []
+        totalLoginHours = ""
+        lastLogin = ""
         Net.shared.clear()
         loggedIn = false
     }

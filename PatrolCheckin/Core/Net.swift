@@ -226,6 +226,8 @@ struct LoginResp {
     let caption: String
     let bizid: String
     let roles: [String]
+    let totalLoginHours: String
+    let lastLogin: String
 }
 
 extension Net {
@@ -247,8 +249,12 @@ extension Net {
                    userid: Net.str(res, "id"),
                    caption: Net.str(res, "caption"),
                    bizid: biz)
+        let hours = Double(Net.str(res, "totaltime")).flatMap { value in
+            value.isFinite && value >= 0 ? String(format: "%.0f", value.rounded()) : nil
+        } ?? ""
         return LoginResp(token: t, userid: Net.str(res, "id"),
-                         caption: Net.str(res, "caption"), bizid: biz, roles: roles)
+                         caption: Net.str(res, "caption"), bizid: biz, roles: roles,
+                         totalLoginHours: hours, lastLogin: Net.str(res, "lastlogintime"))
     }
 }
 
