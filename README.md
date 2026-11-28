@@ -100,8 +100,6 @@ PRODUCT_BUNDLE_IDENTIFIER: com.patrol.checkin
 ---
 
 ## 五、App 里怎么用
-
-1. 首次打开：账号 `huangbinwei`、密码 `Qq123456.`、单位 `MM_NH11_C`（那霍）
 2. 底部 5 个 Tab：巡检 / 故障 / 维保 / 报警 / 更多
 3. **调度单**：故障 Tab → 调度单 → 点单 → 拍照 → 上传并完成
 4. **巡检打卡**：巡检 Tab → 点班次 → 点点位卡片即完成
