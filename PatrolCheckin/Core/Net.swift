@@ -49,7 +49,8 @@ final class Net {
         let data: Data
     }
 
-    func upload(_ path: String, fields: [String: String], files: [UploadFile]) async throws -> Any {
+    func upload(_ path: String, fields: [String: String], files: [UploadFile],
+                acceptsPlainSuccess: Bool = false) async throws -> Any {
         let boundary = "----PatrolFormBoundary\(UUID().uuidString)"
         var body = Data()
 
@@ -76,7 +77,7 @@ final class Net {
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if !token.isEmpty { req.setValue(token, forHTTPHeaderField: "token") }
         req.httpBody = body
-        return try await send(req)
+        return try await send(req, acceptsPlainSuccess: acceptsPlainSuccess)
     }
 
     private func encode(_ form: [String: String]) -> Data {
@@ -142,7 +143,7 @@ final class Net {
         return url
     }
 
-    private func send(_ req: URLRequest) async throws -> Any {
+    private func send(_ req: URLRequest, acceptsPlainSuccess: Bool = false) async throws -> Any {
         let (data, resp) = try await Net.session.data(for: req)
         guard let http = resp as? HTTPURLResponse else {
             throw APIError.message("无响应")
@@ -161,6 +162,7 @@ final class Net {
         if let obj = try? JSONSerialization.jsonObject(with: Data(s.utf8)) {
             return obj
         }
+        if acceptsPlainSuccess && s.trimmingCharacters(in: .whitespacesAndNewlines) == "suc" { return "suc" }
         throw APIError.message(String(s.prefix(120)))
     }
 

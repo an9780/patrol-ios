@@ -12,6 +12,14 @@ struct FaultReportScreen: View {
     @State private var equipments: [FormOption] = []
     @State private var sectionId = ""
     @State private var equipmentId = ""
+    @State private var equipmentCodes: [String: String] = [:]
+    @State private var reportId = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(16))
+    @State private var saved = false
+    @State private var preview: UIImage?
+    @State private var showPreview = false
+    @State private var showPhotoLibrary = false
+    @State private var sectionsError: String?
+    @State private var equipmentError: String?
     @State private var description = ""
     @State private var photos: [UIImage] = []
     @State private var busy = false
@@ -23,13 +31,9 @@ struct FaultReportScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 标题栏
-            ZStack {
-                LinearGradient(colors: [C.gradStart, C.gradEnd],
-                               startPoint: .leading, endPoint: .trailing)
-                Text("异常上报").font(.system(size: 15)).foregroundColor(.white)
-            }
-            .frame(height: 50)
+            BlueHeader(title: "异常上报", back: {
+                if !busy { presentation.wrappedValue.dismiss() }
+            })
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -68,7 +72,10 @@ struct FaultReportScreen: View {
                         divider
 
                         // *工艺段：
-                        Button { showSectionPicker = true } label: {
+                        Button {
+                            if sections.isEmpty { Task { await loadSections() } }
+                            showSectionPicker = true
+                        } label: {
                             HStack(spacing: 0) {
                                 Text("*工艺段：")
                                     .font(.system(size: 16))
@@ -96,16 +103,18 @@ struct FaultReportScreen: View {
                                 .padding(.leading, 10).padding(.trailing, 10)
                                 .frame(height: 35, alignment: .center)
                             ZStack(alignment: .topLeading) {
-                                if description.isEmpty {
-                                    Text("填写异常描述")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(Color(hex: 0xC7C7CD))
-                                        .padding(.leading, 10).padding(.top, 8)
-                                }
                                 TextEditor(text: $description)
                                     .font(.system(size: 16))
                                     .padding(.leading, 4)
                                     .frame(height: 100)
+                                    .accessibilityLabel("异常描述")
+                                if description.isEmpty {
+                                    Text("填写异常描述")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(C.sub)
+                                        .padding(.leading, 10).padding(.top, 8)
+                                        .allowsHitTesting(false)
+                                }
                             }
                         }
                         .frame(height: 135, alignment: .top)
@@ -127,10 +136,22 @@ struct FaultReportScreen: View {
                                 HStack(spacing: 6) {
                                     ForEach(Array(photos.enumerated()), id: \.offset) { idx, img in
                                         ZStack(alignment: .topTrailing) {
-                                            Image(uiImage: img)
-                                                .resizable().scaledToFill()
-                                                .frame(width: 80, height: 100).clipped()
-                                                .cornerRadius(4)
+                                            Button {
+                                                preview = img
+                                                showPreview = true
+                                            } label: {
+                                                Image(uiImage: img)
+                                                    .resizable().scaledToFill()
+                                                    .frame(width: 80, height: 100).clipped()
+                                                    .cornerRadius(4)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .contextMenu {
+                                                Button("删除附件", role: .destructive) {
+                                                    if photos.indices.contains(idx) { photos.remove(at: idx) }
+                                                }
+                                            }
+                                            .accessibilityLabel("查看附件 \(idx + 1)")
                                             Button { photos.remove(at: idx) } label: {
                                                 Image(systemName: "xmark.circle.fill")
                                                     .foregroundColor(.white)
@@ -144,7 +165,7 @@ struct FaultReportScreen: View {
                             }
                             .frame(height: 100)
 
-                            Button { showCameraPicker() } label: {
+                            Button { showPhotoLibrary = true } label: {
                                 Image("moudle_add")
                                     .resizable().scaledToFit()
                                     .padding(15)
@@ -171,7 +192,10 @@ struct FaultReportScreen: View {
                         divider
 
                         // 故障设备
-                        Button { showEquPicker = true } label: {
+                        Button {
+                            showEquPicker = true
+                            if equipments.isEmpty { Task { await loadEquipments(section: sectionId) } }
+                        } label: {
                             Text("故障设备(点击选择)")
                                 .font(.system(size: 16)).foregroundColor(blue)
                                 .frame(maxWidth: .infinity, alignment: .center)
@@ -196,13 +220,14 @@ struct FaultReportScreen: View {
                                 .padding(.leading, 10)
                                 .frame(height: 40, alignment: .center)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                            Text("")
+                            Text(equipmentCodes[equipmentId] ?? "")
                                 .padding(.leading, 10)
                                 .frame(height: 40, alignment: .center)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .layoutPriority(3)
                         }
                     }
+                    .disabled(busy || saved)
                     .padding(5)
                     .background(Color.white)
                     .overlay(Rectangle().stroke(Color(hex: 0xE5E5E5), lineWidth: 1))
@@ -214,13 +239,13 @@ struct FaultReportScreen: View {
                     } label: {
                         HStack(spacing: 8) {
                             if busy { ProgressView().tint(.white) }
-                            Text(busy ? "提交中…" : "提 交")
+                            Text(busy ? "提交中…" : saved ? "重试上传附件" : "提 交")
                                 .font(.system(size: 19)).foregroundColor(.white)
                         }
                         .frame(maxWidth: .infinity).frame(height: 40)
                         .background(blue).cornerRadius(3)
                     }
-                    .disabled(busy || description.isEmpty)
+                    .disabled(busy || (!saved && (description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sectionId.isEmpty)))
                     .padding(20).padding(.top, 10)
 
                     if let m = message {
@@ -232,19 +257,35 @@ struct FaultReportScreen: View {
             .background(C.bg)
         }
         .navigationBarHidden(true)
+        .interactiveDismissDisabled(busy)
         .sheet(isPresented: $showSectionPicker) {
-            OptionPicker(title: "选择工艺段", options: sections) { o in
+            OptionPicker(title: "选择工艺段", options: sections, emptyMessage: sectionsError) { o in
+                guard sectionId != o.id else { return }
                 sectionId = o.id
-                Task { await loadEquipments(section: o.id) }
+                equipmentId = ""
+                equipments = []
+                equipmentCodes = [:]
             }
         }
         .sheet(isPresented: $showEquPicker) {
-            OptionPicker(title: "选择设备", options: equipments) { o in
+            OptionPicker(title: "选择设备", options: equipments, emptyMessage: equipmentError) { o in
                 equipmentId = o.id
             }
         }
         .sheet(isPresented: $showPickerCamera) {
             CameraPicker(images: $photos, useCamera: true)
+        }
+        .sheet(isPresented: $showPhotoLibrary) {
+            CameraPicker(images: $photos, useCamera: false)
+        }
+        .sheet(isPresented: $showPreview) {
+            VStack {
+                BlueHeader(title: "附件预览", back: { showPreview = false })
+                if let image = preview {
+                    Image(uiImage: image).resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
         }
         .task { await loadSections() }
     }
@@ -260,81 +301,93 @@ struct FaultReportScreen: View {
     // MARK: 数据
 
     private func loadSections() async {
+        sectionsError = nil
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_DataCenter/work/processSection/getlist.do",
-                ["unitId": app.unit, "page": "1", "rows": "200"])
-            sections = Net.array(raw, key: "rows").compactMap {
-                let id = Net.str($0, "id"), n = Net.str($0, "name")
-                guard !id.isEmpty else { return nil }
-                return FormOption(id: id, name: n.isEmpty ? id : n)
+                ["unitId": app.unit, "page": "1", "rows": "1000"])
+            let root = Net.dict(raw)
+            let entries = root["rows"] ?? Net.dict(root["result"])["rows"] ?? raw
+            sections = Net.array(entries).compactMap {
+                let id = Net.str($0, "id"), name = Net.str($0, "name")
+                guard !id.isEmpty, !name.isEmpty else { return nil }
+                return FormOption(id: id, name: name)
             }
-        } catch { sections = [] }
+            if sectionId.isEmpty { sectionId = sections.first?.id ?? "" }
+        } catch {
+            sectionsError = error.localizedDescription
+        }
     }
 
     private func loadEquipments(section: String) async {
+        equipmentError = nil
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_Equipment/equipment/getList.do",
-                ["unitId": app.unit, "pSectionId": section, "page": "1", "rows": "200"])
-            var arr: [[String: Any]] = []
-            if let d = raw as? [String: Any] {
-                if let a = d["rows"] as? [[String: Any]] { arr = a }
-                else if let sub = d["result"] as? [String: Any],
-                        let a = sub["rows"] as? [[String: Any]] { arr = a }
+                ["unitId": app.unit, "pSectionId": section, "page": "1", "rows": "200",
+                 "search_name": "", "equipmentCardClass": "", "sort": "insdt", "order": "desc"])
+            guard sectionId == section else { return }
+            let root = Net.dict(raw)
+            let entries = root["rows"] ?? Net.dict(root["result"])["rows"] ?? raw
+            var codes: [String: String] = [:]
+            equipments = Net.array(entries).compactMap {
+                let id = Net.str($0, "id")
+                let name = Net.str($0, "equipmentname")
+                guard !id.isEmpty, !name.isEmpty, codes[id] == nil else { return nil }
+                codes[id] = Net.str($0, "equipmentcardid")
+                return FormOption(id: id, name: name)
             }
-            equipments = arr.compactMap {
-                let id = Net.str($0, "id"), n = Net.str($0, "name")
-                guard !id.isEmpty else { return nil }
-                return FormOption(id: id, name: n.isEmpty ? id : n)
-            }
-        } catch { equipments = [] }
+            equipmentCodes = codes
+        } catch {
+            if sectionId == section { equipmentError = error.localizedDescription }
+        }
     }
 
     private func submit() async {
+        guard !busy else { return }
         busy = true
         message = nil
+        defer { busy = false }
         do {
-            let raw = try await Net.shared.post(
-                "SIPAIIS_DataCenter/maintenance/abnormity/dosave.do",
-                ["unitId": app.unit,
-                 "abnormityDescription": description,
-                 "equipmentIds": equipmentId,
-                 "patrolRecordId": patrolRecordID,
-                 "patrolPointId": "",
-                 "processSectionId": sectionId,
-                 "remark": ""])
-            let d = Net.dict(raw)
-            var newId = Net.str(d, "id")
-            if newId.isEmpty { newId = Net.str(Net.dict(d["result"]), "id") }
-            if newId.isEmpty, let s = d["result"] as? String { newId = s }
-            guard !newId.isEmpty else {
-                message = Net.message(raw)
-                busy = false
-                return
+            if !saved {
+                let raw = try await Net.shared.post(
+                    "SIPAIIS_DataCenter/maintenance/abnormity/dosave.do",
+                    ["id": reportId, "status": "2", "unitId": app.unit, "bizId": app.unit,
+                     "sumitMan": Net.shared.userid,
+                     "abnormityDescription": description.trimmingCharacters(in: .whitespacesAndNewlines),
+                     "equipmentIds": equipmentId, "patrolRecordId": patrolRecordID,
+                     "patrolPointId": "", "processSectionId": sectionId, "remark": ""])
+                let response = Net.dict(raw)
+                guard Net.str(response, "res") == "1" || Net.isOK(raw) else {
+                    throw APIError.message(Net.message(raw))
+                }
+                let returnedId = Net.str(response, "id")
+                if !returnedId.isEmpty { reportId = returnedId }
+                saved = true
             }
             if !photos.isEmpty {
                 var files: [Net.UploadFile] = []
-                for (i, img) in photos.enumerated() {
-                    guard let data = img.jpegData(compressionQuality: 0.72) else { continue }
+                for (index, photo) in photos.enumerated() {
+                    guard let data = photo.jpegData(compressionQuality: 0.72) else {
+                        throw APIError.message("第 \(index + 1) 张照片无法读取")
+                    }
                     files.append(Net.UploadFile(field: "filelist",
-                                                filename: "IMG_\(Int(Date().timeIntervalSince1970))_\(i).jpg",
+                                                filename: "\(reportId)_\(index + 1).jpg",
                                                 mime: "image/jpeg", data: data))
                 }
-                _ = try await Net.shared.upload(
+                let response = try await Net.shared.upload(
                     "SIPAIIS_DataCenter/base/updateFile.do",
-                    fields: ["masterId": newId,
-                             "tbName": "tb_maintenance_problem_fille",
-                             "nameSpace": "maintenanceproblemfile",
-                             "recordId": newId],
-                    files: files)
+                    fields: ["masterId": reportId, "nameSpace": "maintenanceproblemfile"],
+                    files: files, acceptsPlainSuccess: true)
+                let result = Net.dict(response)
+                guard Net.isOK(response) || Net.str(result, "suc") == "1" || (response as? String) == "suc" else {
+                    throw APIError.message(Net.message(response))
+                }
             }
-            app.show("异常上报成功 ✓")
-            busy = false
+            app.show("异常上报成功")
             presentation.wrappedValue.dismiss()
         } catch {
-            message = error.localizedDescription
-            busy = false
+            message = saved ? "工单已保存，附件上传失败。\(error.localizedDescription)" : error.localizedDescription
         }
     }
 }
@@ -344,21 +397,25 @@ struct FaultReportScreen: View {
 struct OptionPicker: View {
     let title: String
     let options: [FormOption]
+    var emptyMessage: String? = nil
     var onPick: (FormOption) -> Void
     @Environment(\.presentationMode) private var presentation
 
     var body: some View {
         NavigationView {
-            List(options) { o in
-                Button {
-                    onPick(o)
-                    presentation.wrappedValue.dismiss()
-                } label: {
-                    HStack {
-                        Text(o.name).foregroundColor(.black)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12)).foregroundColor(C.sub)
+            List {
+                if options.isEmpty { Text(emptyMessage ?? "暂无可选项").foregroundColor(C.sub) }
+                ForEach(options) { option in
+                    Button {
+                        onPick(option)
+                        presentation.wrappedValue.dismiss()
+                    } label: {
+                        HStack {
+                            Text(option.name).foregroundColor(.black)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12)).foregroundColor(C.sub)
+                        }
                     }
                 }
             }
