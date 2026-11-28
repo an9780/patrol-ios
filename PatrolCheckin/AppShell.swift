@@ -274,7 +274,11 @@ struct LoginView: View {
                         Text(Net.shared.base)
                         Text("内网地址待配置").foregroundColor(.secondary)
                     }
-                    Button("本地巡检演示") { previewRequested = true; showSettings = false }
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--patrol-ui-test") {
+                        Button("本地巡检演示") { previewRequested = true; showSettings = false }
+                    }
+                    #endif
                 }
                 .navigationTitle("设置")
                 .toolbar {

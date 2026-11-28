@@ -3,6 +3,7 @@ import XCTest
 final class PatrolUITests: XCTestCase {
     func testLoginAndLocalPatrol() {
         let app = XCUIApplication()
+        app.launchArguments.append("--patrol-ui-test")
         app.launch()
         func screenshot(_ name: String) {
             let shot = XCTAttachment(screenshot: app.screenshot())

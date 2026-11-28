@@ -1,15 +1,12 @@
 import SwiftUI
 
 // MARK: - 我的（照 res/layout/fragment_fifth.xml 还原）
-// 原版菜单仅 4 项：关于软件 / 知识库 / 语音播报 / 切换登录
-// 其余功能统一收进「更多功能」，保证原页 1:1
 
 struct MyScreen: View {
     @EnvironmentObject var app: AppState
-    @State private var voiceOn = true
+    @AppStorage("alarmSoundEnabled") private var voiceOn = true
     @State private var showAbout = false
     @State private var showKnowledge = false
-    @State private var showMore = false
 
     private let titleColor = Color(hex: 0x373A3D)
     private let lineColor = Color(hex: 0xE5E5E5)
@@ -65,7 +62,7 @@ struct MyScreen: View {
                             Image("moudle_ic_voice")
                                 .resizable().scaledToFit()
                                 .padding(13).frame(width: 44, height: 44)
-                            Text("语音播报")
+                            Text("报警声音")
                                 .font(.system(size: 14)).foregroundColor(titleColor)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             Toggle("", isOn: $voiceOn)
@@ -78,8 +75,16 @@ struct MyScreen: View {
                         menuRow("切换登录", "moudle_switch", showArrow: true) { app.logout() }
                         divider
 
-                        // 附加入口（原版无此项，集中收纳其他功能）
-                        menuRow("更多功能", "moudle_doc", showArrow: true) { showMore = true }
+                        Button {
+                            app.logout()
+                        } label: {
+                            HStack(spacing: 0) {
+                                Image(systemName: "power").foregroundColor(C.blue).frame(width: 44, height: 44)
+                                Text("退出").font(.system(size: 14)).foregroundColor(titleColor)
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundColor(C.grayText).frame(width: 44)
+                            }
+                        }.buttonStyle(.plain)
                     }
                     .background(Color.white)
                     .padding(.horizontal, 10)
@@ -95,9 +100,6 @@ struct MyScreen: View {
         }
         .sheet(isPresented: $showKnowledge) {
             NavigationView { KnowledgeTreeScreen().environmentObject(app) }
-        }
-        .sheet(isPresented: $showMore) {
-            NavigationView { MoreFeaturesScreen().environmentObject(app) }
         }
     }
 
@@ -127,68 +129,3 @@ struct MyScreen: View {
     }
 }
 
-// MARK: - 更多功能（收纳非原版主菜单的业务入口）
-
-struct MoreFeaturesScreen: View {
-    @EnvironmentObject var app: AppState
-    @Environment(\.presentationMode) private var presentation
-
-    @State private var showAlarms = false
-    @State private var showSchedules = false
-    @State private var showScheduleCreate = false
-    @State private var showSpare = false
-    @State private var showSettings = false
-    @State private var showChangePwd = false
-    @State private var showEndpoints = false
-
-    private let titleColor = Color(hex: 0x373A3D)
-
-    var body: some View {
-        List {
-            row("实时报警") { showAlarms = true }
-            row("排班管理") { showSchedules = true }
-            row("新建调度") { showScheduleCreate = true }
-            row("备件") { showSpare = true }
-            row("设置") { showSettings = true }
-            row("修改密码") { showChangePwd = true }
-            row("接口总览") { showEndpoints = true }
-        }
-        .listStyle(.plain)
-        .navigationTitle("更多功能")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("关闭") { presentation.wrappedValue.dismiss() }
-            }
-        }
-        .sheet(isPresented: $showAlarms) { AlarmScreen().environmentObject(app) }
-        .sheet(isPresented: $showSchedules) {
-            NavigationView { ScheduleListScreen().environmentObject(app) }
-        }
-        .sheet(isPresented: $showScheduleCreate) {
-            NavigationView { ScheduleCreateScreen().environmentObject(app) }
-        }
-        .sheet(isPresented: $showSpare) {
-            NavigationView { SparePartScreen().environmentObject(app) }
-        }
-        .sheet(isPresented: $showSettings) {
-            NavigationView { SettingsScreen().environmentObject(app) }
-        }
-        .sheet(isPresented: $showChangePwd) {
-            NavigationView { ChangePasswordScreen().environmentObject(app) }
-        }
-        .sheet(isPresented: $showEndpoints) {
-            NavigationView { EndpointListScreen().environmentObject(app) }
-        }
-    }
-
-    private func row(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                Text(title).font(.system(size: 15)).foregroundColor(titleColor)
-                Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 12)).foregroundColor(C.sub)
-            }
-        }
-    }
-}

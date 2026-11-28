@@ -129,10 +129,7 @@ struct AboutScreen: View {
                         Text("服务端"); Spacer()
                         Text("omp.gdgyep.com").foregroundColor(C.sub)
                     }
-                    HStack {
-                        Text("接口数"); Spacer()
-                        Text("\(Endpoints.all.count)").foregroundColor(C.sub)
-                    }
+
                 }
                 Section(header: Text("说明")) {
                     Text("按原安卓版功能重写，不含大华视频、ArcGIS 地图、NFC 刷卡模块。")
