@@ -342,7 +342,13 @@ struct EquipmentSearchScreen: View {
                 EmptyHint(text: error ?? "输入设备名搜索")
             } else {
                 LoadableList(items: rows, empty: "无结果") { r in
-                    SimpleTextRow(text: r.title)
+                    NavigationLink {
+                        PatrolEquDetailScreen(equipmentId: r.id, equipmentName: r.title)
+                            .environmentObject(app)
+                    } label: {
+                        SimpleTextRow(text: r.title)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
