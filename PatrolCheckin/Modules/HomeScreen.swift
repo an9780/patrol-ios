@@ -17,6 +17,7 @@ final class HomeStore: ObservableObject {
                 "SIPAIIS_Patrol/timeEfficiency/patrolRecord/getPatrolRecord4APP.do",
                 ["unitId": unit, "userid": Net.shared.userid, "type": "P",
                  "patrolDate": date, "page": "1", "rows": "100"])
+            try Task.checkCancellation()
             guard let tasks = Net.dict(raw)["content1"], !(tasks is NSNull) else {
                 throw APIError.message("服务未返回今日任务")
             }
@@ -50,7 +51,7 @@ final class HomeStore: ObservableObject {
                     duration = String(s.dropFirst(11).prefix(5)) + " — " + String(e.dropFirst(11).prefix(5))
                 }
             }
-        } catch { loadError = error.localizedDescription }
+        } catch { if !Task.isCancelled { loadError = error.localizedDescription } }
     }
 }
 
@@ -82,22 +83,22 @@ struct HomeScreen: View {
                             showPlants = true
                         } label: {
                             HStack(spacing: 0) {
-                            Text("当前厂区")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color.white.opacity(0.5))
-                                .frame(width: 72, height: 30)
-                            Rectangle().fill(Color.white).frame(width: 1, height: 30)
-                            Text(app.unitName)
-                                .font(.system(size: 16))
-                                .foregroundColor(.white)
-                                .padding(.leading, 5)
-                                .lineLimit(1)
-                            Spacer()
-                            Image("moudle_location")
-                                .resizable().scaledToFit()
-                                .padding(4).frame(width: 30, height: 30)
-                                .padding(.trailing, 8)
-                        }
+                                Text("当前厂区")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color.white.opacity(0.5))
+                                    .frame(width: 72, height: 30)
+                                Rectangle().fill(Color.white).frame(width: 1, height: 30)
+                                Text(app.unitName)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .padding(.leading, 5)
+                                    .lineLimit(1)
+                                Spacer()
+                                Image("moudle_location")
+                                    .resizable().scaledToFit()
+                                    .padding(4).frame(width: 30, height: 30)
+                                    .padding(.trailing, 8)
+                            }
                             .frame(height: 36)
                             .contentShape(Rectangle())
                         }

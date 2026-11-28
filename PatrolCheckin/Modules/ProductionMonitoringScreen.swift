@@ -3,6 +3,11 @@ import SwiftUI
 struct ProductionMonitoringScreen: View {
     @EnvironmentObject private var app: AppState
     @State private var tab = 0
+    @State private var groups: [FormOption] = []
+    @State private var group = ""
+    @State private var centralPoints: [Reading] = []
+    @State private var centralLoading = false
+    @State private var centralError: String?
     @State private var sectionCode = ""
     @State private var signal = ""
     @State private var sections: [FormOption] = []
@@ -21,10 +26,11 @@ struct ProductionMonitoringScreen: View {
 
     var body: some View {
         NavigationView {
-            VStack {
+            VStack(spacing: 0) {
+                BlueHeader(title: "生产监视")
                 MonitoringTabs(titles: ["集控监视", "所有点"], selection: $tab)
                 if tab == 0 {
-                    SectionTreeScreen()
+                    centralMonitoring
                 } else {
                     HStack {
                         Picker("工艺段", selection: $sectionCode) {
@@ -52,15 +58,7 @@ struct ProductionMonitoringScreen: View {
                             Text("暂无测点").foregroundColor(.secondary)
                         }
                         ForEach(points) { point in
-                            NavigationLink {
-                                PointHistoryScreen(pointId: point.id, pointName: point.name)
-                            } label: {
-                                HStack {
-                                    Text(point.name)
-                                    Spacer()
-                                    PlantReadingValue(name: point.name, value: point.value, digital: point.digital)
-                                }
-                            }
+                            readingLink(point)
                         }
                         if loading { ProgressView() }
                         if more && !loading {
@@ -74,11 +72,107 @@ struct ProductionMonitoringScreen: View {
                     .task { if page == 0 { await load(page: 1) } }
                 }
             }
-            .task { await loadSections() }
-            .navigationTitle("生产监视")
-            .navigationBarTitleDisplayMode(.inline)
+            .task(id: app.unit) {
+                async let allPointOptions: Void = loadSections()
+                async let centralOptions: Void = loadGroups()
+                _ = await (allPointOptions, centralOptions)
+            }
+            .navigationBarHidden(true)
         }
         .navigationViewStyle(.stack)
+    }
+
+    private var centralMonitoring: some View {
+        VStack(spacing: 0) {
+            Picker("监视范围", selection: $group) {
+                if groups.isEmpty { Text("暂无监视范围").tag("") }
+                ForEach(groups) { item in Text(item.name).tag(item.id) }
+            }
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .background(Color(uiColor: .systemGray6))
+            List {
+                if centralLoading { ProgressView() }
+                if let error = centralError {
+                    Text(error).foregroundColor(.secondary)
+                    Button("重试") { Task { await loadGroups() } }
+                } else if !centralLoading && centralPoints.isEmpty {
+                    Text("暂无测点").foregroundColor(.secondary)
+                }
+                ForEach(centralPoints) { readingLink($0) }
+            }
+            .listStyle(.plain)
+            .refreshable { await loadGroupPoints() }
+        }
+        .task(id: group) { await loadGroupPoints() }
+    }
+
+    private func readingLink(_ point: Reading) -> some View {
+        NavigationLink {
+            PointHistoryScreen(pointId: point.id, pointName: point.name)
+        } label: {
+            HStack {
+                Text(point.name)
+                Spacer()
+                PlantReadingValue(name: point.name, value: point.value, digital: point.digital)
+            }
+            .frame(minHeight: 38)
+        }
+    }
+
+    private func loadGroups() async {
+        centralError = nil
+        do {
+            let response = try await Net.shared.post(
+                "SIPAIIS_DataCenter/work/scadaPic/getlist4Combo.do",
+                ["companyId": app.unit, "type": "1"])
+            try Task.checkCancellation()
+            groups = Net.array(response).compactMap { item in
+                let id = Net.str(item, "id")
+                let name = Net.str(item, "text")
+                guard !id.isEmpty, !name.isEmpty else { return nil }
+                return FormOption(id: id, name: name)
+            }
+            let newGroup = groups.contains { $0.id == group } ? group : groups.first?.id ?? ""
+            if group == newGroup { await loadGroupPoints() }
+            else { group = newGroup }
+        } catch {
+            if !Task.isCancelled { centralError = error.localizedDescription }
+        }
+    }
+
+    private func loadGroupPoints() async {
+        let requestedGroup = group
+        guard !requestedGroup.isEmpty else {
+            centralPoints = []
+            centralLoading = false
+            return
+        }
+        centralLoading = true
+        centralError = nil
+        defer { if requestedGroup == group { centralLoading = false } }
+        do {
+            let response = try await Net.shared.post(
+                "SIPAIIS_DataCenter/work/scadaPic/getMPointList.do",
+                ["companyId": app.unit, "pid": requestedGroup])
+            try Task.checkCancellation()
+            guard requestedGroup == group else { return }
+            centralPoints = Net.array(response).compactMap { item in
+                makeReading(Net.dict(item["mPoint"]))
+            }
+        } catch {
+            if !Task.isCancelled { centralError = error.localizedDescription }
+        }
+    }
+
+    private func makeReading(_ row: [String: Any]) -> Reading? {
+        let id = Net.str(row, "id")
+        guard !id.isEmpty else { return nil }
+        let name = Net.str(row, "parmname")
+        let value = Net.str(row, "parmvalue")
+        let digital = Net.str(row, "signaltype") == "DI" || Net.str(row, "signalType") == "DI"
+        return Reading(id: id, name: name.isEmpty ? id : name,
+                       value: digital || value.isEmpty ? value : value + Net.str(row, "unit"),
+                       digital: digital)
     }
 
     private func load(page requestedPage: Int) async {
@@ -100,15 +194,8 @@ struct ProductionMonitoringScreen: View {
             let rows = Net.array(records)
             if requestedPage == 1 { points = [] }
             var ids = Set(points.map(\.id))
-            for row in rows {
-                let id = Net.str(row, "id")
-                guard !id.isEmpty, ids.insert(id).inserted else { continue }
-                let name = Net.str(row, "parmname")
-                let value = Net.str(row, "parmvalue")
-                let digital = Net.str(row, "signaltype") == "DI"
-                points.append(Reading(id: id, name: name.isEmpty ? id : name,
-                                      value: digital || value.isEmpty ? value : value + Net.str(row, "unit"),
-                                      digital: digital))
+            for point in rows.compactMap(makeReading) where ids.insert(point.id).inserted {
+                points.append(point)
             }
             page = requestedPage
             more = rows.count == 20
