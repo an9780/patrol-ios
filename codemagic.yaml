@@ -2,39 +2,18 @@ workflows:
   ios-unsigned:
     name: PatrolCheckin unsigned IPA
     instance_type: mac_mini_m2
-    max_build_duration: 60
+    max_build_duration: 50
     environment:
       xcode: latest
-      vars:
-        XCODE_PROJECT: "PatrolCheckin.xcodeproj"
-        XCODE_SCHEME: "PatrolCheckin"
     scripts:
-      - name: Install XcodeGen
-        script: |
-          brew install xcodegen
-      - name: Generate Xcode project
-        script: |
-          xcodegen generate
-          xcodebuild -list -project "$XCODE_PROJECT"
-      - name: Build unsigned app
-        script: |
-          xcodebuild \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-      - name: Package IPA
-        script: |
-          cd build/Build/Products/Release-iphoneos
-          rm -rf Payload Payload.zip
-          mkdir -p Payload
-          cp -R PatrolCheckin.app Payload/
-          zip -qry PatrolCheckin-unsigned.ipa Payload
-          ls -lh PatrolCheckin-unsigned.ipa
+      - name: Build and verify device IPA
+        script: bash ci/build-ipa.sh
+      - name: Exercise the local patrol flow on iPhone simulator
+        script: bash ci/simulator.sh
     artifacts:
-      - build/Build/Products/Release-iphoneos/PatrolCheckin-unsigned.ipa
+      - dist/PatrolCheckin-unsigned.ipa
+      - dist/XcodeProject.zip
+      - dist/SHA256.txt
+      - dist/commit.txt
+      - dist/screenshots/*.png
+      - dist/Smoke.xcresult

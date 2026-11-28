@@ -11,7 +11,7 @@ settings:
   base:
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
-    SWIFT_VERSION: "5.9"
+    SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1"
     ENABLE_BITCODE: "NO"
 
@@ -25,6 +25,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.patrol.checkin
         PRODUCT_NAME: PatrolCheckin
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: PatrolCheckin/Info.plist
       properties:
@@ -39,3 +41,26 @@ targets:
         NSPhotoLibraryUsageDescription: 用于从相册选择巡检照片
         NSPhotoLibraryAddUsageDescription: 用于保存拍摄的巡检照片
         NSLocationWhenInUseUsageDescription: 用于记录巡检位置
+  PatrolCheckinUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [SmokeTests]
+    dependencies:
+      - target: PatrolCheckin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.patrol.checkin.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PatrolCheckin
+schemes:
+  PatrolCheckin:
+    build:
+      targets:
+        PatrolCheckin: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [PatrolCheckinUITests]
+    archive:
+      config: Release

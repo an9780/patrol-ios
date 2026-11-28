@@ -26,6 +26,9 @@ final class PatrolEquStore: ObservableObject {
                         let a = r["rows"] as? [[String: Any]] { arr = a }
             }
             // 按 type 分流：1 手工抄录 / 2 巡检内容 / 3 抄表（无 type 默认归巡检内容）
+            handItems = []
+            meterItems = []
+            contentItems = []
             for d in arr {
                 switch Net.str(d, "type") {
                 case "1": handItems.append(d)

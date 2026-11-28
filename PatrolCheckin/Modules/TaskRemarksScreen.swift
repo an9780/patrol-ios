@@ -5,11 +5,13 @@ import SwiftUI
 struct TaskRemarksScreen: View {
     @EnvironmentObject var app: AppState
     let recordId: String
-    let pointId: String
+    private var key: String {
+        let identity = [Net.shared.userid, app.unit, recordId]
+        let data = (try? JSONEncoder().encode(identity)) ?? Data()
+        return "taskRemark." + data.base64EncodedString()
+    }
 
     @State private var remarks = ""
-    @State private var busy = false
-    @State private var msg: String?
     @Environment(\.presentationMode) private var presentation
 
     var body: some View {
@@ -23,7 +25,7 @@ struct TaskRemarksScreen: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("巡检备注")
+                    Text("任务备注（本机草稿）")
                         .font(.system(size: 20)).foregroundColor(.black)
                         .padding(.top, 10)
 
@@ -42,20 +44,16 @@ struct TaskRemarksScreen: View {
                     .overlay(RoundedRectangle(cornerRadius: 4)
                         .stroke(Color(hex: 0xDADDE2), lineWidth: 1))
 
-                    if let m = msg {
-                        Text(m).font(.system(size: 12)).foregroundColor(.red)
-                            .padding(.top, 8)
-                    }
+
                 }
                 .padding(.horizontal, 16)
             }
 
             // 底部 50dp：提交 / 取消
             HStack(spacing: 0) {
-                Button { Task { await submit() } } label: {
+                Button { save() } label: {
                     HStack(spacing: 6) {
-                        if busy { ProgressView().tint(.white).scaleEffect(0.7) }
-                        Text(busy ? "提交中…" : "提交")
+                        Text("保存草稿")
                             .font(.system(size: 18)).foregroundColor(.white)
                     }
                     .frame(maxWidth: .infinity).frame(height: 40)
@@ -72,24 +70,13 @@ struct TaskRemarksScreen: View {
         }
         .background(Color.white)
         .navigationBarHidden(true)
+        .onAppear { remarks = UserDefaults.standard.string(forKey: key) ?? "" }
     }
 
-    private func submit() async {
-        busy = true
-        msg = nil
-        do {
-            let raw = try await Net.shared.post(
-                "SIPAIIS_Patrol/timeEfficiency/patrolRecord/updatePatrolPointRemark.do",
-                ["id": pointId, "recordId": recordId, "remarks": remarks])
-            if Net.isOK(raw) {
-                app.show("备注已保存 ✓")
-                presentation.wrappedValue.dismiss()
-            } else {
-                msg = Net.message(raw)
-            }
-        } catch {
-            msg = error.localizedDescription
-        }
-        busy = false
+    private func save() {
+        guard !recordId.isEmpty else { return }
+        UserDefaults.standard.set(remarks, forKey: key)
+        app.show("草稿已保存到本机")
+        presentation.wrappedValue.dismiss()
     }
 }

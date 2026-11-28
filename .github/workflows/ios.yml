@@ -1,133 +1,33 @@
-name: Build iOS IPA
-
+name: Build unsigned IPA
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
-
-concurrency:
-  group: ios-build
-  cancel-in-progress: true
-
-env:
-  HAS_SIGNING: ${{ secrets.P12_BASE64 != '' && secrets.PROFILE_BASE64 != '' }}
-
+permissions:
+  contents: read
 jobs:
-  build:
-    runs-on: macos-latest
-    timeout-minutes: 45
-
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 55
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # project.yml 在仓库根目录或 ios/ 子目录都能识别
-      - name: Locate project
-        id: locate
-        run: |
-          set -e
-          if [ -f project.yml ]; then
-            echo "dir=." >> "$GITHUB_OUTPUT"
-            echo "project.yml found at repo root"
-          elif [ -f ios/project.yml ]; then
-            echo "dir=ios" >> "$GITHUB_OUTPUT"
-            echo "project.yml found in ios/"
-          else
-            echo "::error::project.yml not found. Upload project.yml + PatrolCheckin/ to repo root (or keep them inside ios/)."
-            ls -la
-            exit 1
-          fi
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        working-directory: ${{ steps.locate.outputs.dir }}
-        run: |
-          set -e
-          xcodegen generate
-          xcodebuild -list -project PatrolCheckin.xcodeproj
-
-      - name: Build unsigned app
-        working-directory: ${{ steps.locate.outputs.dir }}
-        run: |
-          set -e
-          xcodebuild \
-            -project PatrolCheckin.xcodeproj \
-            -scheme PatrolCheckin \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-
-          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
-          echo "APP=$APP"
-          test -n "$APP"
-          rm -rf Payload unsigned.ipa
-          mkdir -p Payload
-          cp -R "$APP" Payload/
-          zip -qry unsigned.ipa Payload
-          ls -lh unsigned.ipa
-
-      - name: Upload unsigned IPA
-        uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v6
+      - name: Build device IPA
+        run: bash ci/build-ipa.sh
+      - uses: actions/upload-artifact@v7
         with:
           name: PatrolCheckin-unsigned
-          path: ${{ steps.locate.outputs.dir }}/unsigned.ipa
+          path: |
+            dist/PatrolCheckin-unsigned.ipa
+            dist/SHA256.txt
+            dist/commit.txt
+            dist/XcodeProject.zip
           if-no-files-found: error
-
-      - name: Sign with certificate
-        if: env.HAS_SIGNING == 'true'
-        working-directory: ${{ steps.locate.outputs.dir }}
-        env:
-          P12_BASE64: ${{ secrets.P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          PROFILE_BASE64: ${{ secrets.PROFILE_BASE64 }}
-        run: |
-          set -e
-
-          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
-          security create-keychain -p actions "$KEYCHAIN"
-          security set-keychain-settings -lut 3600 "$KEYCHAIN"
-          security unlock-keychain -p actions "$KEYCHAIN"
-
-          echo "$P12_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
-
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/profile.mobileprovision"
-          cp "$RUNNER_TEMP/profile.mobileprovision" \
-             ~/Library/MobileDevice/Provisioning\ Profiles/
-
-          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
-          plutil -extract Entitlements xml1 -o "$RUNNER_TEMP/ent.plist" "$RUNNER_TEMP/profile.plist"
-          BUNDLE_ID=$(plutil -extract Entitlements.application-identifier raw "$RUNNER_TEMP/profile.plist" | sed 's/.*\.//')
-          echo "Bundle ID from profile: $BUNDLE_ID"
-
-          APP_NAME=$(ls Payload | head -1)
-          echo "App: $APP_NAME"
-
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "Payload/$APP_NAME/Info.plist"
-
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | head -1 | sed -E 's/.*"(.+)".*/\1/')
-          echo "Identity: $IDENTITY"
-
-          codesign -f -s "$IDENTITY" --entitlements "$RUNNER_TEMP/ent.plist" "Payload/$APP_NAME"
-          codesign -v --verbose=2 "Payload/$APP_NAME"
-
-          rm -f signed.ipa
-          zip -qry signed.ipa Payload
-          ls -lh signed.ipa
-
-      - name: Upload signed IPA
-        if: env.HAS_SIGNING == 'true'
-        uses: actions/upload-artifact@v4
+      - name: Test the local patrol flow on an iPhone simulator
+        run: bash ci/simulator.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: PatrolCheckin-signed
-          path: ${{ steps.locate.outputs.dir }}/signed.ipa
+          name: Simulator-results
+          path: |
+            dist/Smoke.xcresult
+            dist/screenshots
           if-no-files-found: warn
+

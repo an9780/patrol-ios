@@ -4,6 +4,7 @@ import SwiftUI
 
 @MainActor
 final class HomeStore: ObservableObject {
+    @Published var loadError: String?
     @Published var total = 0
     @Published var unsubmitted = 0
     @Published var submitted = 0
@@ -25,6 +26,9 @@ final class HomeStore: ObservableObject {
             }
             submitted = done
             unsubmitted = max(0, total - done)
+            loadError = nil
+            currentTask = ""
+            duration = ""
             if let cur = arr.first {
                 currentTask = Net.str(cur, "name")
                 let s = Net.str(cur, "startTime")
@@ -33,13 +37,18 @@ final class HomeStore: ObservableObject {
                     duration = String(s.dropFirst(11).prefix(5)) + " — " + String(e.dropFirst(11).prefix(5))
                 }
             }
-        } catch { }
+        } catch { loadError = error.localizedDescription }
     }
 }
 
 struct HomeScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = HomeStore()
+    @State private var showVideo = false
+    @State private var showOffline = false
+    @State private var showHistory = false
+    @State private var showMaintain = false
+    @State private var showReport = false
     @State private var showEquSearch = false
     @State private var showSectionTree = false
 
@@ -89,6 +98,11 @@ struct HomeScreen: View {
                     }
                 }
 
+                if let error = store.loadError {
+                    Button("任务加载失败：\(error) · 重试") {
+                        Task { await store.load(unit: app.unit, date: app.date) }
+                    }.font(.footnote)
+                }
                 // ── 当前任务卡 ──
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 0) {
@@ -121,7 +135,7 @@ struct HomeScreen: View {
                 // ── 第一行模块（60dp，4 个）──
                 HStack(spacing: 0) {
                     module("巡检任务", "moudle_fg_main_patrol") { app.tab = 2 }
-                    module("异常上报", "moudle_fg_main_fault") { app.tab = 1 }
+                    module("异常上报", "moudle_fg_main_fault") { showReport = true }
                     module("生产数据", "moudle_fg_main_data") { showSectionTree = true }
                     module("设备查询", "moudle_fg_main_equ") { showEquSearch = true }
                 }
@@ -130,10 +144,10 @@ struct HomeScreen: View {
 
                 // ── 第二行模块（60dp，4 个可见）──
                 HStack(spacing: 0) {
-                    module("历史任务", "moudle_fg_main_alarm") { app.tab = 3 }
-                    module("设备维保", "moudle_fg_main_com_adj") { app.tab = 3 }
-                    module("离线巡检", "moudle_fg_main_file") { app.tab = 2 }
-                    module("视频监控", "moudle_fg_main_video") { }
+                    module("历史任务", "moudle_fg_main_alarm") { showHistory = true }
+                    module("设备维保", "moudle_fg_main_com_adj") { showMaintain = true }
+                    module("离线巡检", "moudle_fg_main_file") { showOffline = true }
+                    module("视频监控", "moudle_fg_main_video") { showVideo = true }
                 }
                 .frame(height: 60)
                 .padding(.bottom, 10)
@@ -143,6 +157,11 @@ struct HomeScreen: View {
         }
         .background(C.bg)
         .navigationBarHidden(true)
+        .sheet(isPresented: $showVideo) { NavigationView { VideoCatalogScreen() }.environmentObject(app) }
+        .sheet(isPresented: $showOffline) { NavigationView { OfflinePatrolScreen() }.environmentObject(app) }
+        .sheet(isPresented: $showReport) { FaultReportScreen().environmentObject(app) }
+        .sheet(isPresented: $showHistory) { NavigationView { HistoryListScreen() }.environmentObject(app) }
+        .sheet(isPresented: $showMaintain) { MaintainScreen().environmentObject(app) }
         .sheet(isPresented: $showEquSearch) {
             NavigationView { EquipmentSearchScreen().environmentObject(app) }
         }
@@ -163,7 +182,7 @@ struct HomeScreen: View {
                     .frame(height: 15)
             }
             .frame(maxWidth: .infinity)
-            Text("\(value)")
+            Text(store.loadError == nil ? String(value) : "—")
                 .font(.system(size: 26)).foregroundColor(.white)
                 .padding(.leading, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)

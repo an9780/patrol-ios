@@ -137,12 +137,21 @@ final class Net {
     }
 
     static func array(_ any: Any?, key: String? = nil) -> [[String: Any]] {
-        if let k = key, let d = any as? [String: Any] {
-            return (d[k] as? [[String: Any]]) ?? []
+        let value: Any?
+        if let key = key {
+            value = (any as? [String: Any])?[key]
+        } else {
+            value = any
         }
-        return (any as? [[String: Any]]) ?? []
+        if let rows = value as? [[String: Any]] { return rows }
+        if let string = value as? String,
+           let decoded = try? JSONSerialization.jsonObject(with: Data(string.utf8)) {
+            return (decoded as? [[String: Any]]) ?? []
+        }
+        return []
     }
     static func str(_ d: [String: Any], _ k: String) -> String {
+        if d[k] is NSNull { return "" }
         if let v = d[k] as? String { return v }
         if let v = d[k] { return String(describing: v) }
         return ""
@@ -196,7 +205,7 @@ extension Net {
         let res = Net.dict(d["res"])
         let rolesArr = Net.array(res["roles"])
         let roles = rolesArr.compactMap { $0["name"] as? String }
-        let biz = rolesArr.first?["bizid"] as? String ?? ""
+        let biz = rolesArr.map { Net.str($0, "bizid") }.first { !$0.isEmpty } ?? Net.str(res, "bizid")
         setSession(token: t,
                    userid: Net.str(res, "id"),
                    caption: Net.str(res, "caption"),

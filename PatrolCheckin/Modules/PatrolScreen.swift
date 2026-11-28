@@ -2,12 +2,15 @@ import SwiftUI
 
 // MARK: - 巡检任务列表（照 activity_pro_patrol_task_list.xml + item_pro_patrol_task_list.xml）
 
-struct Shift: Identifiable {
+struct Shift: Identifiable, Codable {
     let id: String
     let name: String
     let start: String
     let end: String
     let resultId: String
+    var serverStatus = ""
+    var isTemporary = false
+    var content = ""
     var points: [Point] = []
 
     var rangeText: String {
@@ -15,17 +18,18 @@ struct Shift: Identifiable {
         let e = end.count >= 16 ? String(end.dropFirst(11).prefix(5)) : end
         return "\(s) — \(e)"
     }
+    var allPointsDone: Bool { serverStatus == "3" || (!points.isEmpty && doneCount == points.count) }
     var doneCount: Int { points.filter(\.isDone).count }
 }
 
-struct Point: Identifiable {
+struct Point: Identifiable, Codable {
     let id: String
     let recordId: String
     let name: String
     let area: String
-    let status: String
-    let worker: String
-    let finish: String
+    var status: String
+    var worker: String
+    var finish: String
 
     var isDone: Bool { status == "3" }
     var timeText: String {
@@ -47,7 +51,17 @@ final class PatrolStore: ObservableObject {
     @Published var loading = false
     @Published var error: String?
 
+    let demonstration: Bool
+    init(demonstration: Bool) {
+        self.demonstration = demonstration
+    }
+
     func load(unit: String, date: String) async {
+        if demonstration {
+            if shifts.isEmpty { shifts = Self.sampleShifts(date: date) }
+            return
+        }
+        guard !loading else { return }
         loading = true
         error = nil
         do {
@@ -55,6 +69,7 @@ final class PatrolStore: ObservableObject {
                 "SIPAIIS_Patrol/timeEfficiency/patrolRecord/getPatrolRecord4APP.do",
                 ["unitId": unit, "userid": Net.shared.userid, "type": "P",
                  "patrolDate": date, "page": "1", "rows": "100"])
+            guard Net.dict(raw)["content1"] != nil else { throw APIError.message("服务未返回任务列表") }
             var out: [Shift] = []
             for t in Net.array(raw, key: "content1") {
                 let rid = Net.str(t, "id")
@@ -64,8 +79,10 @@ final class PatrolStore: ObservableObject {
                               start: Net.str(t, "startTime"),
                               end: Net.str(t, "endTime"),
                               resultId: Net.str(t, "resultId"))
-                s.points = try await loadPoints(recordId: rid)
-                if !s.points.isEmpty { out.append(s) }
+                s.serverStatus = Net.str(t, "status")
+                s.isTemporary = Net.str(t, "patrolModelId") == "temp"
+                s.content = Net.str(t, "content")
+                out.append(s)
             }
             shifts = out
         } catch {
@@ -78,6 +95,7 @@ final class PatrolStore: ObservableObject {
         let raw = try await Net.shared.post(
             "SIPAIIS_Patrol/timeEfficiency/patrolPoint/getPatrolPointForRecord4APP.do",
             ["patrolRecordId": recordId, "type": "P"])
+        guard Net.dict(raw)["result"] != nil else { throw APIError.message("服务未返回点位列表") }
         return Net.array(raw, key: "result").map { d in
             Point(id: Net.str(d, "id"),
                   recordId: Net.str(d, "recordId"),
@@ -89,39 +107,51 @@ final class PatrolStore: ObservableObject {
         }
     }
 
-    func complete(_ p: Point) async -> Bool {
-        guard !p.recordId.isEmpty else { return false }
-        do {
-            let raw = try await Net.shared.post(
-                "SIPAIIS_Patrol/timeEfficiency/patrolRecord/updatePatrolPointByAPP.do",
-                ["id": p.recordId])
-            return Net.isOK(raw)
-        } catch { return false }
-    }
-
-    func completeAll(_ s: Shift) async -> Int {
-        var n = 0
-        for p in s.points {
-            if await complete(p) { n += 1 }
+    func loadDetail(_ id: String) async throws {
+        guard !demonstration else { return }
+        let points = try await loadPoints(recordId: id)
+        if let index = shifts.firstIndex(where: { $0.id == id }) {
+            shifts[index].points = points
         }
-        return n
     }
 
-    /// 任务级「完成」：updatePatrolRecordByAPP
-    func finishTask(_ s: Shift) async -> Bool {
-        guard !s.id.isEmpty else { return false }
-        do {
-            let raw = try await Net.shared.post(
-                "SIPAIIS_Patrol/timeEfficiency/patrolRecord/updatePatrolRecordByAPP.do",
-                ["id": s.id, "status": "3"])
-            return Net.isOK(raw)
-        } catch { return false }
+    func markSample(_ point: Point, shiftID: String) {
+        guard demonstration, let i = shifts.firstIndex(where: { $0.id == shiftID }),
+              let j = shifts[i].points.firstIndex(where: { $0.id == point.id }),
+              !shifts[i].points[j].isDone else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        shifts[i].points[j].status = "3"
+        shifts[i].points[j].worker = "演示员"
+        shifts[i].points[j].finish = formatter.string(from: Date())
+    }
+
+    private static func sampleShifts(date: String) -> [Shift] {
+        func make(_ id: String, _ name: String, _ temporary: Bool, _ names: [String]) -> Shift {
+            var shift = Shift(id: id, name: name, start: date + " 08:00",
+                              end: date + " 17:00", resultId: "")
+            shift.isTemporary = temporary
+            shift.content = "巡检流程演示"
+            shift.points = names.enumerated().map { index, name in
+                Point(id: "\(id)-\(index)", recordId: id, name: name,
+                      area: "示例区域", status: "1", worker: "", finish: "")
+            }
+            return shift
+        }
+        return [make("daily", "日常巡检（演示）", false, ["进水泵房", "配电间"]),
+                make("temp", "临时巡检（演示）", true, ["仪表间"])]
     }
 }
 
 struct PatrolScreen: View {
     @EnvironmentObject var app: AppState
-    @StateObject private var store = PatrolStore()
+    @StateObject private var store: PatrolStore
+    init(demonstration: Bool = false) {
+        _store = StateObject(wrappedValue: PatrolStore(demonstration: demonstration))
+    }
+    private var visibleShifts: [Shift] {
+        store.shifts.filter { $0.isTemporary == (tabIndex == 1) }
+    }
     @State private var tabIndex = 0        // 0=日常 1=临时
 
     var body: some View {
@@ -136,7 +166,7 @@ struct PatrolScreen: View {
     private var content: some View {
         VStack(spacing: 0) {
             // 标题栏
-            BlueHeader(title: "今日巡检任务",
+            BlueHeader(title: store.demonstration ? "本地演示 · 今日巡检任务" : "今日巡检任务",
                        trailing: AnyView(Button {
                            Task { await store.load(unit: app.unit, date: app.date) }
                        } label: {
@@ -151,22 +181,20 @@ struct PatrolScreen: View {
                         Text("日   常").font(.system(size: 15))
                             .foregroundColor(tabIndex == 0 ? C.tabSel : C.tabUnsel)
                             .frame(maxWidth: .infinity).frame(height: 35)
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.plain).accessibilityIdentifier("dailyTab")
                     Button { tabIndex = 1 } label: {
                         Text("临   时").font(.system(size: 15))
                             .foregroundColor(tabIndex == 1 ? C.tabSel : C.tabUnsel)
                             .frame(maxWidth: .infinity).frame(height: 35)
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.plain).accessibilityIdentifier("temporaryTab")
                 }
                 .padding(.leading, 50).padding(.trailing, 50)
 
                 HStack(spacing: 0) {
-                    Rectangle().fill(C.tabSel)
-                        .frame(height: 3).cornerRadius(1.5)
-                        .padding(.leading, tabIndex == 0 ? 83 : 0)
-                    Rectangle().fill(tabIndex == 1 ? C.tabSel : Color.clear)
-                        .frame(height: 3).cornerRadius(1.5)
-                        .padding(.trailing, tabIndex == 1 ? 83 : 0)
+                    ForEach(0..<2) { index in
+                        Capsule().fill(tabIndex == index ? C.tabSel : Color.clear)
+                            .frame(height: 3)
+                    }
                 }
                 .padding(.horizontal, 83)
             }
@@ -175,19 +203,20 @@ struct PatrolScreen: View {
             // 列表
             if store.loading && store.shifts.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if store.shifts.isEmpty {
+            } else if visibleShifts.isEmpty {
                 EmptyHint(text: store.error ?? "暂无任务")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(store.shifts) { s in
+                        ForEach(visibleShifts) { s in
                             NavigationLink {
                                 PatrolDetailScreen(store: store, shiftId: s.id)
                             } label: {
                                 shiftCard(s)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("shift-" + s.id)
                         }
                     }
                     .padding(.horizontal, 8)
@@ -203,9 +232,9 @@ struct PatrolScreen: View {
         VStack(spacing: 0) {
             // 顶部 10dp 色带
             HStack(spacing: 0) {
-                Rectangle().fill(s.doneCount == s.points.count ? Color(hex: 0x6FDD7F) : C.bar)
+                Rectangle().fill(s.allPointsDone ? Color(hex: 0x6FDD7F) : C.bar)
                     .frame(height: 10)
-                Rectangle().fill(s.doneCount == s.points.count ? Color(hex: 0x6FDD7F) : C.bar)
+                Rectangle().fill(s.allPointsDone ? Color(hex: 0x6FDD7F) : C.bar)
                     .frame(height: 10)
             }
 
@@ -253,17 +282,17 @@ struct PatrolScreen: View {
     }
 
     private func statusText(_ s: Shift) -> String {
-        if s.doneCount == s.points.count { return "已完成" }
+        if s.allPointsDone { return "已完成" }
         if s.doneCount > 0 { return "进行中" }
         return "任务未开始"
     }
     private func statusColor(_ s: Shift) -> Color {
-        if s.doneCount == s.points.count { return Color(hex: 0x1890FF) }
+        if s.allPointsDone { return Color(hex: 0x1890FF) }
         if s.doneCount > 0 { return C.bar }
         return C.grayText
     }
     private func statusBg(_ s: Shift) -> Color {
-        if s.doneCount == s.points.count { return Color(hex: 0xE5F0FF) }
+        if s.allPointsDone { return Color(hex: 0xE5F0FF) }
         if s.doneCount > 0 { return C.doingBg }
         return Color(hex: 0xF0F0F0)
     }
@@ -275,6 +304,11 @@ struct PatrolDetailScreen: View {
     @EnvironmentObject var app: AppState
     @ObservedObject var store: PatrolStore
     let shiftId: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var showReport = false
+    @State private var detailsError: String?
+    @State private var loadingDetails = true
+    @State private var pointInfo: Point?
     @State private var showRemarks = false
     @State private var showImages = false
 
@@ -287,12 +321,12 @@ struct PatrolDetailScreen: View {
             // 蓝色渐变头部
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 0) {
-                    Button { } label: {
+                    Button { dismiss() } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white)
                             .frame(width: 30, height: 30)
-                    }
+                    }.accessibilityLabel("返回任务列表")
                     Spacer()
                     Text("任务详情")
                         .font(.system(size: 15)).foregroundColor(.white)
@@ -316,7 +350,7 @@ struct PatrolDetailScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 8)
 
-                Text("内容：生产巡检")
+                Text("内容：" + (s?.content ?? ""))
                     .font(.system(size: 14))
                     .foregroundColor(.white)
                     .padding(.horizontal, 30)
@@ -330,6 +364,13 @@ struct PatrolDetailScreen: View {
 
             // 白色点位区（顶部圆角 10）
             ScrollView {
+                if loadingDetails {
+                    ProgressView().padding()
+                } else if let error = detailsError {
+                    Button("点位加载失败：\(error) · 重试") { Task { await loadDetails() } }.padding()
+                } else if s?.points.isEmpty != false {
+                    EmptyHint(text: "暂无巡检点")
+                }
                 LazyVGrid(columns: cols, spacing: 0) {
                     ForEach(s?.points ?? []) { p in
                         pointCard(p)
@@ -348,23 +389,25 @@ struct PatrolDetailScreen: View {
 
             // 底部操作栏（62dp）
             HStack(spacing: 0) {
-                bottomItem("异常上报", "moudle_patrol_task_sub_fault")
+                Button { showReport = true } label: {
+                    bottomItem("异常上报", "moudle_patrol_task_sub_fault")
+                }.disabled(store.demonstration)
                 Button { showImages = true } label: {
                     bottomItem("图片补充", "add_iv")
                 }
                 .buttonStyle(.plain)
+                .disabled(store.demonstration)
                 Button { showRemarks = true } label: {
                     bottomItem("填写备注", "moudle_patrol_task_remark")
                 }
                 .buttonStyle(.plain)
+                .disabled(store.demonstration)
                 Spacer()
                 Button {
-                    guard let s = s else { return }
-                    Task {
-                        let n = await store.completeAll(s)
-                        _ = await store.finishTask(s)
-                        app.show("已提交 \(n)/\(s.points.count)")
-                        await store.load(unit: app.unit, date: app.date)
+                    if store.demonstration {
+                        app.show(s?.allPointsDone == true ? "本地演示已完成" : "请先点选所有示例点位")
+                    } else {
+                        app.show("请在支持现场核验的客户端完成巡检")
                     }
                 } label: {
                     Text("完  成")
@@ -379,27 +422,51 @@ struct PatrolDetailScreen: View {
             .background(Color.white)
         }
         .navigationBarHidden(true)
+        .task { await loadDetails() }
+        .sheet(item: $pointInfo) { p in
+            NavigationView {
+                List {
+                    Text(p.name)
+                    Text(p.area)
+                    Text(p.dateLine)
+                    Text("正式巡检请通过现场核验流程提交。").font(.footnote)
+                }
+                .navigationTitle("巡检点详情")
+                .toolbar { Button("关闭") { pointInfo = nil } }
+            }
+        }
+        .sheet(isPresented: $showReport) {
+            FaultReportScreen(patrolRecordID: shiftId).environmentObject(app)
+        }
         .sheet(isPresented: $showImages) {
             NavigationView {
-                RemarkImageScreen(recordId: s?.id ?? "", pointId: "")
+                RemarkImageScreen(recordId: shiftId)
                     .environmentObject(app)
             }
         }
         .sheet(isPresented: $showRemarks) {
             NavigationView {
-                TaskRemarksScreen(recordId: s?.id ?? "", pointId: "")
+                TaskRemarksScreen(recordId: shiftId)
                     .environmentObject(app)
             }
         }
     }
 
+    private func loadDetails() async {
+        loadingDetails = true
+        detailsError = nil
+        do { try await store.loadDetail(shiftId) }
+        catch { detailsError = error.localizedDescription }
+        loadingDetails = false
+    }
+
     /// 照 item_pro_point.xml
     private func pointCard(_ p: Point) -> some View {
         Button {
-            Task {
-                let ok = await store.complete(p)
-                app.show(ok ? "打卡成功 ✓" : "打卡失败")
-                await store.load(unit: app.unit, date: app.date)
+            if store.demonstration {
+                store.markSample(p, shiftID: shiftId)
+            } else {
+                pointInfo = p
             }
         } label: {
             VStack(spacing: 0) {
@@ -429,6 +496,8 @@ struct PatrolDetailScreen: View {
             .shadow(color: .black.opacity(0.12), radius: 2, y: 2)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("point-" + p.id)
+        .accessibilityValue(p.isDone ? "已完成" : "待巡检")
     }
 
     private func bottomItem(_ title: String, _ image: String) -> some View {

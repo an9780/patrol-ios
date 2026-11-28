@@ -53,8 +53,8 @@ final class AppState: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
-        unit = d.string(forKey: "unit") ?? "MM_NH11_C"
-        user = d.string(forKey: "user") ?? "huangbinwei"
+        unit = ""
+        user = d.string(forKey: "user") ?? ""
         date = AppState.today()
     }
 
@@ -71,13 +71,19 @@ final class AppState: ObservableObject {
     }
 
     func login(password: String) async {
+        guard !busy, !user.isEmpty, !password.isEmpty else { return }
         busy = true
         do {
             let r = try await Net.shared.login(user: user, password: password)
+            guard !r.bizid.isEmpty else {
+                Net.shared.clear()
+                throw APIError.message("账号未返回所属单位，请联系管理员核对角色。")
+            }
+            unit = r.bizid
+            date = AppState.today()
             caption = r.caption
             loggedIn = true
             UserDefaults.standard.set(user, forKey: "user")
-            UserDefaults.standard.set(unit, forKey: "unit")
         } catch {
             show("登录失败：\(error.localizedDescription)")
         }
@@ -124,7 +130,10 @@ struct RootView: View {
 struct LoginView: View {
     @EnvironmentObject var app: AppState
     @State private var password = ""
-    @State private var isInnerNet = true
+    @State private var showPassword = false
+    @State private var showSettings = false
+    @State private var showPreview = false
+    @State private var previewRequested = false
 
     var body: some View {
         GeometryReader { geo in
@@ -168,15 +177,23 @@ struct LoginView: View {
                             Image("moudle_icon_lock")
                                 .resizable().scaledToFit()
                                 .padding(8).frame(width: 34, height: 34)
-                            SecureField("", text: $password,
-                                        prompt: Text("请输入密码").foregroundColor(.white))
+                            Group {
+                                if showPassword {
+                                    TextField("请输入密码", text: $password)
+                                        .autocapitalization(.none).disableAutocorrection(true)
+                                } else {
+                                    SecureField("请输入密码", text: $password)
+                                }
+                            }
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 15)
                                 .frame(height: 34)
-                            Image("moudle_eye")
-                                .resizable().scaledToFit()
-                                .padding(8).frame(width: 34, height: 34)
+                            Button { showPassword.toggle() } label: {
+                                Image("moudle_eye").resizable().scaledToFit()
+                                    .padding(8).frame(width: 34, height: 34)
+                            }
+                            .accessibilityLabel(showPassword ? "隐藏密码" : "显示密码")
                         }
                         .frame(width: 260)
                         .padding(.top, 25)
@@ -189,10 +206,9 @@ struct LoginView: View {
                     // 内网/外网
                     HStack(spacing: 17) {
                         HStack(spacing: 4) {
-                            Text(isInnerNet ? "内网" : "外网")
-                                .font(.system(size: 12)).foregroundColor(.white)
-                            Toggle("", isOn: $isInnerNet)
-                                .labelsHidden().scaleEffect(0.75)
+                            Text("外网").font(.system(size: 12)).foregroundColor(.white)
+                            Image(systemName: "network").foregroundColor(.white)
+
                         }
                         .frame(width: 80, alignment: .leading)
                         Spacer()
@@ -213,11 +229,11 @@ struct LoginView: View {
                         .background(C.blue)
                         .cornerRadius(5)
                     }
+                    .disabled(app.busy || app.user.isEmpty || password.isEmpty)
                     .padding(.top, 22)
 
                     // 设置
-                    Button {
-                    } label: {
+                    Button { showSettings = true } label: {
                         Text("设置")
                             .font(.system(size: 15)).foregroundColor(.white)
                             .frame(width: 250, height: 38)
@@ -247,6 +263,33 @@ struct LoginView: View {
                     .padding(.trailing, 15)
                     .padding(.bottom, 10)
                 }
+            }
+        }
+        .sheet(isPresented: $showSettings, onDismiss: {
+            if previewRequested { previewRequested = false; showPreview = true }
+        }) {
+            NavigationView {
+                List {
+                    Section(header: Text("网络")) {
+                        Text(Net.shared.base)
+                        Text("内网地址待配置").foregroundColor(.secondary)
+                    }
+                    Button("本地巡检演示") { previewRequested = true; showSettings = false }
+                }
+                .navigationTitle("设置")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("关闭") { showSettings = false }
+                    }
+                }
+            }
+            .navigationViewStyle(.stack)
+            .environmentObject(app)
+        }
+        .fullScreenCover(isPresented: $showPreview) {
+            VStack(spacing: 0) {
+                HStack { Spacer(); Button("退出演示") { showPreview = false }.padding(.horizontal) }
+                PatrolScreen(demonstration: true).environmentObject(app)
             }
         }
     }

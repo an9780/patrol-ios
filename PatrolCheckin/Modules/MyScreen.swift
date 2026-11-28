@@ -133,6 +133,7 @@ struct MoreFeaturesScreen: View {
     @EnvironmentObject var app: AppState
     @Environment(\.presentationMode) private var presentation
 
+    @State private var showAlarms = false
     @State private var showSchedules = false
     @State private var showScheduleCreate = false
     @State private var showSpare = false
@@ -144,6 +145,7 @@ struct MoreFeaturesScreen: View {
 
     var body: some View {
         List {
+            row("实时报警") { showAlarms = true }
             row("排班管理") { showSchedules = true }
             row("新建调度") { showScheduleCreate = true }
             row("备件") { showSpare = true }
@@ -159,6 +161,7 @@ struct MoreFeaturesScreen: View {
                 Button("关闭") { presentation.wrappedValue.dismiss() }
             }
         }
+        .sheet(isPresented: $showAlarms) { AlarmScreen().environmentObject(app) }
         .sheet(isPresented: $showSchedules) {
             NavigationView { ScheduleListScreen().environmentObject(app) }
         }

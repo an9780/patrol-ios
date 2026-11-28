@@ -181,7 +181,7 @@ struct MoreScreen: View {
                         }
                     }
                     Section(header: Text("接口总览")) {
-                        NavigationLink("已接入 \(Endpoints.all.count) 个接口") {
+                        NavigationLink("已登记 \(Endpoints.all.count) 个接口") {
                             EndpointListScreen()
                         }
                     }
@@ -209,7 +209,7 @@ struct EndpointListScreen: View {
                                     .font(.system(size: 12, design: .monospaced))
                                     .foregroundColor(C.text)
                                 if e.verified {
-                                    Text("已验证").font(.system(size: 9, weight: .bold))
+                                    Text("旧版记录").font(.system(size: 9, weight: .bold))
                                         .foregroundColor(.green)
                                         .padding(.horizontal, 5).padding(.vertical, 1)
                                         .background(Color.green.opacity(0.12))

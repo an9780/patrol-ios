@@ -4,6 +4,7 @@ import UIKit
 // MARK: - 故障上报（严格照 res/layout/activity_new_fault.xml 还原）
 
 struct FaultReportScreen: View {
+    var patrolRecordID = ""
     @EnvironmentObject var app: AppState
     @Environment(\.presentationMode) private var presentation
 
@@ -299,7 +300,7 @@ struct FaultReportScreen: View {
                 ["unitId": app.unit,
                  "abnormityDescription": description,
                  "equipmentIds": equipmentId,
-                 "patrolRecordId": "",
+                 "patrolRecordId": patrolRecordID,
                  "patrolPointId": "",
                  "processSectionId": sectionId,
                  "remark": ""])

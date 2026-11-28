@@ -313,7 +313,7 @@ struct PointListBySection: View {
 struct RemarkImageScreen: View {
     @EnvironmentObject var app: AppState
     let recordId: String
-    let pointId: String
+    @State private var uploadError: String?
 
     @State private var photos: [UIImage] = []
     @State private var busy = false
@@ -340,6 +340,8 @@ struct RemarkImageScreen: View {
             PhotoGrid(photos: $photos)
                 .frame(height: 120)
 
+            if let error = uploadError { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal) }
+
             // 提交按钮 16sp 白，高 30
             Button {
                 Task { await submit() }
@@ -362,7 +364,10 @@ struct RemarkImageScreen: View {
     }
 
     private func submit() async {
+        guard !busy, !recordId.isEmpty, !photos.isEmpty else { return }
         busy = true
+        defer { busy = false }
+        uploadError = nil
         var files: [Net.UploadFile] = []
         for (i, img) in photos.enumerated() {
             guard let data = img.jpegData(compressionQuality: 0.72) else { continue }
@@ -370,22 +375,32 @@ struct RemarkImageScreen: View {
                                         filename: "IMG_\(Int(Date().timeIntervalSince1970))_\(i).jpg",
                                         mime: "image/jpeg", data: data))
         }
-        _ = try? await Net.shared.upload(
-            "SIPAIIS_DataCenter/base/updateFile.do",
-            fields: ["masterId": pointId,
-                     "tbName": "tb_patrol_point_file",
-                     "nameSpace": "patrolpointfile",
-                     "recordId": recordId],
-            files: files)
-        busy = false
-        app.show("图片已补充 ✓")
-        presentation.wrappedValue.dismiss()
+        guard files.count == photos.count else {
+            uploadError = "图片编码失败，请重新选择图片。"
+            return
+        }
+        do {
+            let raw = try await Net.shared.upload(
+                "SIPAIIS_Base/base/updateFile.do",
+                fields: ["masterId": recordId, "tbName": "TB_TimeEfficiency_PatrolRecord_file",
+                         "nameSpace": "patrolrecordfile"],
+                files: files)
+            guard Net.isOK(raw) else {
+                uploadError = "上传未获确认：" + Net.message(raw)
+                return
+            }
+            app.show("图片已补充 ✓")
+            presentation.wrappedValue.dismiss()
+        } catch {
+            uploadError = error.localizedDescription
+        }
     }
 }
 
 /// 120dp 高的图片网格（对应 GridView）
 struct PhotoGrid: View {
     @Binding var photos: [UIImage]
+    @State private var chooseSource = false
     @State private var showCamera = false
     @State private var showLibrary = false
 
@@ -404,7 +419,7 @@ struct PhotoGrid: View {
                         .offset(x: 3, y: -3)
                     }
                 }
-                Button { showCamera = true } label: {
+                Button { chooseSource = true } label: {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 24)).foregroundColor(C.blue)
                         .frame(width: 100, height: 100)
@@ -415,6 +430,12 @@ struct PhotoGrid: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 8)
+        }
+        .confirmationDialog("添加图片", isPresented: $chooseSource) {
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button("拍照") { showCamera = true }
+            }
+            Button("从相册选择") { showLibrary = true }
         }
         .sheet(isPresented: $showCamera) { CameraPicker(images: $photos, useCamera: true) }
         .sheet(isPresented: $showLibrary) { CameraPicker(images: $photos, useCamera: false) }
