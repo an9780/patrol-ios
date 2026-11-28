@@ -20,7 +20,7 @@ test "$(plutil -extract CFBundleIdentifier raw "$info")" = "com.patrol.checkin"
 test "$(plutil -extract DTPlatformName raw "$info")" = "iphoneos"
 exe="$(plutil -extract CFBundleExecutable raw "$info")"
 test -x "$app/$exe"
-xcrun lipo -verify_arch arm64 "$app/$exe"
+xcrun lipo "$app/$exe" -verify_arch arm64
 test -s "$app/Assets.car"
 ditto "$app" "$stage/Payload/PatrolCheckin.app"
 (cd "$stage" && /usr/bin/zip -qr -y "$stage/current.ipa" Payload)
