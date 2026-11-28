@@ -193,7 +193,7 @@ struct FaultScreen: View {
             }
             .sheet(isPresented: $showHistory) {
                 NavigationView {
-                    HistoryListScreen().environmentObject(app)
+                    HistoryListScreen(abnormal: tab == .abnormity).environmentObject(app)
                 }
             }
             .task { await reload() }

@@ -7,23 +7,30 @@ final class HistoryStore: ObservableObject {
     @Published var rows: [[String: Any]] = []
     @Published var loading = false
     @Published var error: String?
+    @Published private(set) var hasMore = false
+    private var page = 0
+    private let pageSize = 20
 
-    func load(unit: String, abnormal: Bool, keyword: String) async {
+    func load(unit: String, abnormal: Bool, nextPage: Bool = false) async {
+        guard !loading else { return }
         loading = true
         error = nil
-        rows = []
-        defer { if !Task.isCancelled { loading = false } }
+        defer { loading = false }
+        let requestedPage = nextPage ? page + 1 : 1
+        var parameters = ["page": String(requestedPage), "rows": String(pageSize), "search_name": ""]
+        let path: String
+        if abnormal {
+            path = "SIPAIIS_DataCenter/maintenance/abnormity/getList.do"
+            parameters["unitId"] = unit
+            parameters["pSectionId"] = ""
+            parameters["status"] = "0"
+        } else {
+            path = "SIPAIIS_Equipment/maintenance/getMDetailList.do"
+            parameters["type"] = "3"
+            parameters["search_code"] = unit
+            parameters["status"] = "1"
+        }
         do {
-            let path = abnormal ? "SIPAIIS_DataCenter/maintenance/abnormity/getList.do"
-                : "SIPAIIS_Equipment/maintenance/getMDetailList.do"
-            var parameters = ["unitId": unit, "page": "1", "rows": "50", "search_name": keyword,
-                              "pSectionId": ""]
-            if abnormal {
-                parameters["status"] = "0"
-            } else {
-                parameters["type"] = "3"
-                parameters["search_code"] = ""
-            }
             let raw = try await Net.shared.post(path, parameters)
             try Task.checkCancellation()
             let root = Net.dict(raw)
@@ -31,7 +38,12 @@ final class HistoryStore: ObservableObject {
             guard let result = root["rows"] ?? nested["rows"] ?? (raw as? [[String: Any]]) else {
                 throw APIError.message("服务未返回历史记录")
             }
-            rows = Net.array(result)
+            let received = Net.array(result)
+            if nextPage { rows.append(contentsOf: received) }
+            else { rows = received }
+            page = requestedPage
+            let total = max(Net.int(root, "total"), Net.int(nested, "total"))
+            hasMore = !received.isEmpty && (total > 0 ? page * pageSize < total : received.count == pageSize)
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
         }
@@ -42,42 +54,11 @@ struct HistoryListScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = HistoryStore()
     @Environment(\.dismiss) private var dismiss
-    @State private var category = 0
-    @State private var query = ""
-    @State private var submittedQuery = ""
-
-    private struct Request: Equatable {
-        let unit: String
-        let category: Int
-        let query: String
-    }
-
-    private var request: Request {
-        Request(unit: app.unit, category: category, query: submittedQuery)
-    }
+    let abnormal: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                LinearGradient(colors: [C.gradStart, C.gradEnd],
-                               startPoint: .leading, endPoint: .trailing)
-                Text("历史记录").font(.system(size: 15)).foregroundColor(.white)
-            }
-            .frame(height: 50)
-            .overlay(alignment: .leading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "arrow.left").foregroundColor(.white).frame(width: 44, height: 44)
-                }.accessibilityLabel("返回")
-            }
-            HStack {
-                TextField("搜索历史记录", text: $query)
-                    .submitLabel(.search)
-                    .onSubmit { submittedQuery = query }
-                Button("搜索") { submittedQuery = query }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            MonitoringTabs(titles: ["维修记录", "异常记录"], selection: $category)
+            BlueHeader(title: abnormal ? "异常记录" : "缺陷记录", back: { dismiss() })
 
             if store.loading && store.rows.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -89,43 +70,56 @@ struct HistoryListScreen: View {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(store.rows.enumerated()), id: \.offset) { _, d in
                             NavigationLink {
-                                HistoryDetailScreen(recordId: Net.str(d, "id"), abnormal: category == 1)
+                                HistoryDetailScreen(recordId: Net.str(d, "id"), abnormal: abnormal)
                                     .environmentObject(app)
                             } label: {
                                 HistoryTaskRow(
-                                    id: Net.str(d, "id"),
-                                    status: statusText(Net.str(d, "status")),
+                                    id: displayNumber(d),
+                                    status: abnormal ? statusText(Net.str(d, "status")) : "已完成",
                                     fields: fields(d))
                             }
                             .buttonStyle(.plain)
                             .disabled(Net.str(d, "id").isEmpty)
                         }
+                        if store.loading { ProgressView().padding() }
+                        if let error = store.error {
+                            Text(error).font(.footnote).foregroundColor(C.sub)
+                        }
+                        if store.hasMore && !store.loading {
+                            Button("加载更多") { Task { await reload(nextPage: true) } }
+                                .padding(10)
+                        }
                     }
                     .padding(.vertical, 4)
                 }
                 .background(C.bg)
+                .refreshable { await reload() }
             }
         }
         .navigationBarHidden(true)
-        .task(id: request) {
-            let current = request
-            await store.load(unit: current.unit, abnormal: current.category == 1, keyword: current.query)
-        }
+        .task { await reload() }
     }
 
-    private func fields(_ d: [String: Any]) -> [(String, String)] {
-        var out: [(String, String)] = []
-        let ps = Net.str(Net.dict(d["processSection"]), "name")
-        if !ps.isEmpty { out.append(("所属点位", ps)) }
-        let eq = Net.str(d, "equipmentNames").isEmpty ? Net.str(d, "equipmentName") : Net.str(d, "equipmentNames")
-        if !eq.isEmpty { out.append(("设备名称", eq)) }
-        let content = Net.str(d, category == 1 ? "abnormityDescription" : "problemcontent")
-        if !content.isEmpty { out.append(("问题内容", content)) }
-        let result = Net.str(d, category == 1 ? "remark" : "problemresult")
-        if !result.isEmpty { out.append(("处理结果", result)) }
-        let t = Net.str(d, "insdt")
-        if !t.isEmpty { out.append(("提交时间", t)) }
-        return out
+    private func reload(nextPage: Bool = false) async {
+        await store.load(unit: app.unit, abnormal: abnormal, nextPage: nextPage)
+    }
+
+    private func displayNumber(_ row: [String: Any]) -> String {
+        let number = Net.str(row, "detailNumber")
+        return number.isEmpty ? Net.str(row, "id") : number
+    }
+
+    private func fields(_ row: [String: Any]) -> [(String, String)] {
+        let content = Net.str(row, abnormal ? "abnormityDescription" : "problemcontent")
+        let time = Net.str(row, "insdt").replacingOccurrences(of: "T", with: " ")
+        let company = Net.str(Net.dict(row["company"]), "name")
+        let result = Net.str(row, abnormal ? "remark" : "problemresult")
+        return [
+            ("所属单位", company.isEmpty ? app.unitName : company),
+            ("发起时间", String(time.prefix(16))),
+            ("问题描述", content),
+            ("处理内容", result.isEmpty && !abnormal ? content : result)
+        ].filter { !$0.1.isEmpty }
     }
 
     private func statusText(_ s: String) -> String {
