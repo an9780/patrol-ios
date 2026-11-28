@@ -76,7 +76,6 @@ struct ScheduleListScreen: View {
                                 card(d)
                             }
                             .buttonStyle(.plain)
-
                         }
                     }
                 }
@@ -90,12 +89,17 @@ struct ScheduleListScreen: View {
             ScheduleCreateScreen().environmentObject(app)
         }
         .task { await store.load(unit: app.unit, keyword: keyword) }
-
     }
 
     /// item_schedule_sheet.xml
     private func card(_ d: [String: Any]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let task = Net.array(d, key: "tasks").first ?? [:]
+        let taskName = Net.str(task, "name")
+        let candidates = Net.array(task, key: "candidates").map { Net.str($0, "caption") }
+            .filter { !$0.isEmpty }.joined(separator: "|")
+        let company = Net.dict(d["targetCompany"])
+        let companyName = Net.str(company, "name")
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
                 Image("moudle_flow")
                     .resizable().scaledToFit()
@@ -107,11 +111,11 @@ struct ScheduleListScreen: View {
                     .padding(.vertical, 5)
                     .frame(height: 30, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(Net.str(d, "taskName").isEmpty ? Net.str(d, "status") : Net.str(d, "taskName"))
+                Text(taskName.isEmpty ? "已完成" : taskName)
                     .font(.system(size: 14)).foregroundColor(.black)
                     .padding(.leading, 10).padding(.trailing, 8).padding(.vertical, 5)
             }
-            Text("调度厂区： " + Net.str(Net.dict(d["targetCompany"]), "sname"))
+            Text("调度厂区： " + (companyName.isEmpty ? Net.str(company, "sname") : companyName))
                 .font(.system(size: 14)).foregroundColor(.black)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -120,10 +124,10 @@ struct ScheduleListScreen: View {
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(Net.str(d, "targetuserName"))
+            Text(candidates.isEmpty ? "---" : candidates)
                 .font(.system(size: 14)).foregroundColor(.black)
                 .padding(.horizontal, 10).padding(.vertical, 5)
-            Text("发起时间： " + String(Net.str(d, "insdt").prefix(10)))
+            Text("发起时间： " + String(Net.str(d, "stdt").prefix(10)))
                 .font(.system(size: 14)).foregroundColor(.black)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)

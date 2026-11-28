@@ -63,6 +63,8 @@ struct HomeScreen: View {
     @State private var showReport = false
     @State private var showEquSearch = false
     @State private var showDispatch = false
+    @State private var showPlants = false
+    @State private var selectedPlant = ""
 
     var body: some View {
         ScrollView {
@@ -75,13 +77,17 @@ struct HomeScreen: View {
 
                     VStack(spacing: 0) {
                         // 当前厂区 30dp
-                        HStack(spacing: 0) {
+                        Button {
+                            selectedPlant = app.unit
+                            showPlants = true
+                        } label: {
+                            HStack(spacing: 0) {
                             Text("当前厂区")
                                 .font(.system(size: 14))
                                 .foregroundColor(Color.white.opacity(0.5))
                                 .frame(width: 72, height: 30)
                             Rectangle().fill(Color.white).frame(width: 1, height: 30)
-                            Text(app.unit)
+                            Text(app.unitName)
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
                                 .padding(.leading, 5)
@@ -92,7 +98,10 @@ struct HomeScreen: View {
                                 .padding(4).frame(width: 30, height: 30)
                                 .padding(.trailing, 8)
                         }
-                        .frame(height: 30)
+                            .frame(height: 36)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                         .padding(.top, 10)
 
                         // 三个计数 75dp
@@ -177,7 +186,43 @@ struct HomeScreen: View {
         .sheet(isPresented: $showDispatch) {
             NavigationView { ScheduleListScreen().environmentObject(app) }
         }
-        .task { await store.load(unit: app.unit, date: app.date) }
+        .sheet(isPresented: $showPlants) {
+            VStack(spacing: 12) {
+                HStack {
+                    Button("取消") { showPlants = false }.foregroundColor(C.sub)
+                    Spacer()
+                    Button("完成") {
+                        if !selectedPlant.isEmpty { app.unit = selectedPlant }
+                        showPlants = false
+                    }.disabled(selectedPlant.isEmpty)
+                }
+                .padding(16)
+                if app.loadingPlants {
+                    ProgressView()
+                } else if let error = app.plantError, app.plants.isEmpty {
+                    Text(error).foregroundColor(C.sub)
+                    Button("重试") { Task { await app.loadPlants() } }
+                } else {
+                    ForEach(app.plants) { plant in
+                        Button {
+                            selectedPlant = plant.id
+                        } label: {
+                            HStack {
+                                Text(plant.name)
+                                Spacer()
+                                if selectedPlant == plant.id { Image(systemName: "checkmark") }
+                            }
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 44)
+                        }
+                        Divider()
+                    }
+                }
+                Spacer()
+            }
+            .modifier(PlantSheetHeight())
+        }
+        .task(id: app.unit) { await store.load(unit: app.unit, date: app.date) }
     }
 
     private func stat(_ title: String, _ icon: String, _ value: Int) -> some View {
@@ -213,5 +258,17 @@ struct HomeScreen: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .buttonStyle(.plain)
+    }
+}
+
+
+private struct PlantSheetHeight: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content.presentationDetents([.medium, .large])
+        } else {
+            content
+        }
     }
 }

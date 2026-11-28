@@ -45,6 +45,10 @@ final class AppState: ObservableObject {
     @Published var loggedIn = false
     @Published var caption = ""
     @Published var unit: String
+    @Published private(set) var plants: [FormOption] = []
+    @Published private(set) var plantError: String?
+    @Published private(set) var loadingPlants = false
+    var unitName: String { plants.first { $0.id == unit }?.name ?? unit }
     @Published var user: String
     @Published var date: String
     @Published var busy = false
@@ -75,11 +79,13 @@ final class AppState: ObservableObject {
         busy = true
         do {
             let r = try await Net.shared.login(user: user, password: password)
-            guard !r.bizid.isEmpty else {
+            await loadPlants()
+            guard let initialUnit = plants.first(where: { $0.id == r.bizid }) ?? plants.first
+                    ?? (r.bizid.isEmpty ? nil : FormOption(id: r.bizid, name: r.bizid)) else {
                 Net.shared.clear()
                 throw APIError.message("账号未返回所属单位，请联系管理员核对角色。")
             }
-            unit = r.bizid
+            unit = initialUnit.id
             date = AppState.today()
             caption = r.caption
             loggedIn = true
@@ -90,7 +96,22 @@ final class AppState: ObservableObject {
         busy = false
     }
 
+    func loadPlants() async {
+        guard !loadingPlants else { return }
+        loadingPlants = true
+        plantError = nil
+        defer { loadingPlants = false }
+        do {
+            let data = try await Net.shared.get("SIPAIIS_Base/user/getUnitForTree_Workshop.do", [:])
+            plants = FormOption.treeOptions(from: data, users: false)
+            if plants.isEmpty { plantError = "暂无可选厂区" }
+        } catch {
+            plantError = error.localizedDescription
+        }
+    }
+
     func logout() {
+        plants = []
         Net.shared.clear()
         loggedIn = false
     }

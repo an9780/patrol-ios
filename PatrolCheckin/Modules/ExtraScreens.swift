@@ -460,12 +460,12 @@ struct ScheduleCreateScreen: View {
         loadingOptions = true
         defer { loadingOptions = false }
         do {
-            async let plantData = Net.shared.post("SIPAIIS_Base/user/getUnitForTree_Workshop.do", [:])
+            async let plantData = Net.shared.get("SIPAIIS_Base/user/getUnitForTree_Workshop.do", [:])
             async let reviewerData = Net.shared.post("SIPAIIS_Base/user/getUnitForTree_User.do", [:])
             async let typeData = Net.shared.post("SIPAIIS_Base/base/dict/data.do",
                                                 ["dictType": "Business_ProcessAdjustment", "unitId": app.unit])
-            plants = try Self.treeOptions(from: await plantData, users: false)
-            reviewers = try Self.treeOptions(from: await reviewerData, users: true)
+            plants = try FormOption.treeOptions(from: await plantData, users: false)
+            reviewers = try FormOption.treeOptions(from: await reviewerData, users: true)
             types = try Net.array(await typeData, key: "result").compactMap { row in
                 let id = Net.str(row, "value")
                 let name = Net.str(row, "label")
@@ -479,24 +479,6 @@ struct ScheduleCreateScreen: View {
         } catch {
             message = error.localizedDescription
         }
-    }
-
-    private static func treeOptions(from data: Any, users: Bool) -> [FormOption] {
-        let roots = Net.array(data, key: "result")
-        var found = Set<String>()
-        func walk(_ nodes: [[String: Any]]) -> [FormOption] {
-            nodes.flatMap { node -> [FormOption] in
-                let children = Net.array(node, key: "children")
-                let id = Net.str(node, "id")
-                let name = Net.str(node, "label")
-                let selectable = users ? Net.str(node, "type") == "U" : children.isEmpty
-                if selectable && !id.isEmpty && !name.isEmpty && found.insert(id).inserted {
-                    return [FormOption(id: id, name: name)]
-                }
-                return walk(children)
-            }
-        }
-        return walk(roots.isEmpty ? Net.array(data) : roots)
     }
 
     private func submit() async {

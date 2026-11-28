@@ -25,6 +25,24 @@ struct FormField: Identifiable {
 struct FormOption: Identifiable, Hashable {
     let id: String
     let name: String
+
+    static func treeOptions(from data: Any, users: Bool) -> [FormOption] {
+        let roots = Net.array(data, key: "result")
+        var found = Set<String>()
+        func walk(_ nodes: [[String: Any]]) -> [FormOption] {
+            nodes.flatMap { node -> [FormOption] in
+                let children = Net.array(node, key: "children")
+                let id = Net.str(node, "id")
+                let name = Net.str(node, "label")
+                let selectable = users ? Net.str(node, "type") == "U" : children.isEmpty
+                if selectable && !id.isEmpty && !name.isEmpty && found.insert(id).inserted {
+                    return [FormOption(id: id, name: name)]
+                }
+                return walk(children)
+            }
+        }
+        return walk(roots.isEmpty ? Net.array(data) : roots)
+    }
 }
 
 @MainActor

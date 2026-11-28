@@ -41,7 +41,7 @@ struct FaultReportScreen: View {
                                 .font(.system(size: 16))
                                 .padding(.leading, 10).padding(.trailing, 3)
                                 .frame(height: 35, alignment: .center)
-                            Text(app.caption.isEmpty ? app.unit : app.unit)
+                            Text(app.unitName)
                                 .font(.system(size: 16))
                                 .padding(.leading, 10)
                                 .frame(height: 35, alignment: .center)
