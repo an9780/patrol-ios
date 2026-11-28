@@ -343,12 +343,18 @@ struct EquipmentSearchScreen: View {
             } else {
                 LoadableList(items: rows, empty: "无结果") { r in
                     NavigationLink {
-                        PatrolEquDetailScreen(equipmentId: r.id, equipmentName: r.title)
+                        EquipmentCardScreen(equipmentId: r.id, equipmentName: r.title)
                             .environmentObject(app)
                     } label: {
                         SimpleTextRow(text: r.title)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        NavigationLink {
+                            PatrolEquDetailScreen(equipmentId: r.id, equipmentName: r.title)
+                                .environmentObject(app)
+                        } label: { Text("设备巡检卡") }
+                    }
                 }
             }
         }
