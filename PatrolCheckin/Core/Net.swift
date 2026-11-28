@@ -110,6 +110,38 @@ final class Net {
         return try await send(req)
     }
 
+    private func getRequest(_ path: String, _ fields: [String: String]) throws -> URLRequest {
+        guard var components = URLComponents(string: base + "/" + path) else {
+            throw APIError.message("服务地址无效")
+        }
+        components.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
+        guard let url = components.url else { throw APIError.message("请求参数无效") }
+        var request = URLRequest(url: url)
+        if !token.isEmpty { request.setValue(token, forHTTPHeaderField: "token") }
+        return request
+    }
+
+    func get(_ path: String, _ fields: [String: String]) async throws -> Any {
+        try await send(try getRequest(path, fields))
+    }
+
+    func downloadKnowledgeFile(path: String, displayName: String) async throws -> URL {
+        let request = try getRequest("SIPAIIS_Base/base/download.do",
+            ["fileName": path, "nameSpace": "knowledgefile"])
+        let (temporary, response) = try await Self.session.download(for: request, delegate: KnowledgeDownloadDelegate())
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              http.mimeType != "application/json", http.mimeType != "text/html" else {
+            throw APIError.message("服务器未返回可下载的附件")
+        }
+        let name = displayName.split(whereSeparator: { $0 == "/" || $0.asciiValue == 92 }).last.map(String.init)
+        let safeName = name.flatMap { $0.isEmpty || $0 == "." || $0 == ".." ? nil : $0 } ?? "附件"
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(safeName)
+        try FileManager.default.moveItem(at: temporary, to: url)
+        return url
+    }
+
     private func send(_ req: URLRequest) async throws -> Any {
         let (data, resp) = try await Net.session.data(for: req)
         guard let http = resp as? HTTPURLResponse else {
@@ -215,5 +247,18 @@ extension Net {
                    bizid: biz)
         return LoginResp(token: t, userid: Net.str(res, "id"),
                          caption: Net.str(res, "caption"), bizid: biz, roles: roles)
+    }
+}
+
+
+private final class KnowledgeDownloadDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        let original = task.originalRequest?.url
+        let target = request.url
+        completionHandler(target?.scheme == "https" && target?.host == original?.host
+                          && target?.port == original?.port ? request : nil)
     }
 }

@@ -58,7 +58,6 @@ struct HomeScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = HomeStore()
     @State private var showPatrol = false
-    @State private var showOffline = false
     @State private var showAlarm = false
     @State private var showMaintain = false
     @State private var showReport = false
@@ -159,7 +158,6 @@ struct HomeScreen: View {
                 HStack(spacing: 0) {
                     module("历史报警", "moudle_fg_main_alarm") { showAlarm = true }
                     module("保养工单", "moudle_fg_main_com_adj") { showMaintain = true }
-                    module("离线巡检", "moudle_fg_main_file") { showOffline = true }
                 }
                 .frame(height: 60)
                 .padding(.bottom, 10)
@@ -170,7 +168,6 @@ struct HomeScreen: View {
         .background(C.bg)
         .navigationBarHidden(true)
         .sheet(isPresented: $showPatrol) { PatrolScreen().environmentObject(app) }
-        .sheet(isPresented: $showOffline) { NavigationView { OfflinePatrolScreen() }.environmentObject(app) }
         .sheet(isPresented: $showReport) { FaultReportScreen().environmentObject(app) }
         .sheet(isPresented: $showAlarm) { AlarmScreen().environmentObject(app) }
         .sheet(isPresented: $showMaintain) { MaintainScreen().environmentObject(app) }

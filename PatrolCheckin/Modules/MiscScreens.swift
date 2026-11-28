@@ -255,6 +255,9 @@ struct KnowledgeDocScreen: View {
                 EmptyHint(text: error ?? "该分类下暂无文档")
             } else {
                 LoadableList(items: rows, empty: "暂无文档") { r in
+                    NavigationLink {
+                        KnowledgeAttachmentScreen(documentID: Net.str(r.raw, "id"), title: r.title)
+                    } label: {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 0) {
                             Image("icon_statement")
@@ -278,6 +281,9 @@ struct KnowledgeDocScreen: View {
                     .padding(5)
                     .background(RoundedRectangle(cornerRadius: 3).fill(Color.white))
                     .padding(.horizontal, 8).padding(.vertical, 3)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(Net.str(r.raw, "id").isEmpty)
                 }
             }
         }
@@ -294,7 +300,7 @@ struct KnowledgeDocScreen: View {
         error = nil
         rows = []
         do {
-            let raw = try await Net.shared.post(
+            let raw = try await Net.shared.get(
                 "SIPAIIS_LIBRARY/knowledge/searchDocument",
                 ["typeId": typeId, "page": "1", "rows": "100", "status": "1",
                  "roleIds": Net.shared.roleIDs.joined(separator: ","),
