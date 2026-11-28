@@ -25,10 +25,11 @@ enum FaultTab: String, CaseIterable, Identifiable {
     func params(unit: String, search: String) -> [String: String] {
         switch self {
         case .abnormity:
-            return ["unitId": unit, "page": "1", "rows": "20"]
+            return ["unitId": unit, "page": "1", "rows": "20", "status": "2",
+                    "pSectionId": "", "search_name": search, "sort": "insdt", "order": "desc"]
         case .repairTask:
             return ["page": "1", "rows": "20", "searchName": search,
-                    "sort": "insdt", "order": "desc", "searchType": "1"]
+                    "sort": "insdt", "order": "desc", "searchType": "0"]
         case .maintainTask:
             return ["page": "1", "rows": "20", "searchName": search,
                     "sort": "insdt", "order": "desc", "searchType": "2"]
@@ -47,23 +48,26 @@ final class FaultStore: ObservableObject {
     @Published var rows: [GenericRow] = []
     @Published var loading = false
     @Published var error: String?
-    @Published var loaded = false
+    private var requestNumber = 0
 
     func load(tab: FaultTab, unit: String, search: String) async {
+        requestNumber += 1
+        let request = requestNumber
         loading = true
         error = nil
+        rows = []
+        defer { if requestNumber == request { loading = false } }
         do {
             let raw = try await Net.shared.post(tab.path, tab.params(unit: unit, search: search))
-            rows = FaultStore.rows(from: raw)
+            try Task.checkCancellation()
+            guard requestNumber == request else { return }
+            rows = FaultStore.rows(from: raw, tab: tab)
         } catch {
-            self.error = error.localizedDescription
-            rows = []
+            if requestNumber == request && !Task.isCancelled { self.error = error.localizedDescription }
         }
-        loading = false
-        loaded = true
     }
 
-    static func rows(from raw: Any) -> [GenericRow] {
+    static func rows(from raw: Any, tab: FaultTab) -> [GenericRow] {
         var arr: [[String: Any]] = []
         if let a = raw as? [[String: Any]] {
             arr = a
@@ -74,7 +78,22 @@ final class FaultStore: ObservableObject {
                    let a = sub["rows"] as? [[String: Any]] { arr = a; break }
             }
         }
-        return arr.enumerated().map { GenericRow.from($0.element, index: $0.offset) }
+        return arr.compactMap { row in
+            if tab == .abnormity {
+                let id = Net.str(row, "id")
+                guard !id.isEmpty else { return nil }
+                return GenericRow(id: id, title: Net.str(row, "abnormityDescription"),
+                                  subtitle: Net.str(row, "insdt"), status: "", raw: row)
+            }
+            let task = Net.dict(row["task"])
+            let taskId = Net.str(task, "id")
+            let entity = Net.dict(row["businessEntity"])
+            guard !taskId.isEmpty else { return nil }
+            let problem = Net.str(entity, "problemcontent")
+            let title = problem.isEmpty ? Net.str(entity, "contents") : problem
+            return GenericRow(id: taskId, title: title,
+                              subtitle: Net.str(task, "createTime"), status: Net.str(task, "name"), raw: row)
+        }
     }
 }
 
@@ -239,13 +258,16 @@ struct FaultScreen: View {
         case .abnormity:
             FaultDetailScreen(abnormalId: r.id)
         case .dispose, .repairTask, .maintainTask:
-            FaultAuditScreen(taskId: r.id, businessId: r.id)
+            let process = Net.dict(r.raw["processInstance"])
+            FaultAuditScreen(taskId: r.id, processInstanceId: Net.str(process, "id"),
+                             title: tab.rawValue)
         default:
             FaultDetailScreen(abnormalId: r.id)
         }
     }
 
     private func reload() async {
+        guard tab != .dispatch else { return }
         await store.load(tab: tab, unit: app.unit, search: search)
     }
 }
