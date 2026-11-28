@@ -380,7 +380,7 @@ struct EquipmentSearchScreen: View {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         let name = Net.str(row, "equipmentname")
                         NavigationLink {
-                            EquipmentCardScreen(equipmentId: Net.str(row, "id"), equipmentName: name)
+                            EquipmentCardScreen(equipment: row)
                         } label: {
                             equipmentRow(row, name: name)
                         }

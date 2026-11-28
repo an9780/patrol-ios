@@ -125,6 +125,7 @@ struct FaultScreen: View {
                     }
                 }
                 .frame(height: 50)
+                .background(C.bar, ignoresSafeAreaEdges: .top)
 
                 // ── 搜索行：padding 16 ──
                 HStack(spacing: 0) {
@@ -207,10 +208,10 @@ struct FaultScreen: View {
                 }
             }
             .navigationBarHidden(true)
-            .sheet(isPresented: $showReport) {
-                NavigationView { FaultReportScreen().environmentObject(app) }
+            .fullScreenCover(isPresented: $showReport) {
+                FaultReportScreen().environmentObject(app)
             }
-            .sheet(isPresented: $showHistory) {
+            .fullScreenCover(isPresented: $showHistory) {
                 NavigationView {
                     HistoryListScreen(abnormal: tab == .abnormity).environmentObject(app)
                 }

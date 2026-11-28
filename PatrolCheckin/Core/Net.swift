@@ -102,13 +102,13 @@ final class Net {
     }
 
     /// JSON 提交（仅登录等少数接口）
-    func postJSON(_ path: String, _ json: [String: String]) async throws -> Any {
+    func postJSON(_ path: String, _ json: [String: Any], acceptsPlainSuccess: Bool = false) async throws -> Any {
         var req = URLRequest(url: URL(string: base + "/" + path)!)
         req.httpMethod = "POST"
         req.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         if !token.isEmpty { req.setValue(token, forHTTPHeaderField: "token") }
         req.httpBody = try JSONSerialization.data(withJSONObject: json)
-        return try await send(req)
+        return try await send(req, acceptsPlainSuccess: acceptsPlainSuccess)
     }
 
     private func getRequest(_ path: String, _ fields: [String: String]) throws -> URLRequest {

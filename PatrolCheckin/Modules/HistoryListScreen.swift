@@ -1,6 +1,25 @@
 import SwiftUI
 
-// MARK: - 历史任务（照 item_history_task_log.xml 还原）
+private enum AbnormalHistoryStatus: String, CaseIterable, Identifiable {
+    case all = ""
+    case processing = "0"
+    case completed = "1"
+    case pending = "2"
+    case closed = "3"
+    case returned = "4"
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .all: return "全部"
+        case .processing: return "工单处理中"
+        case .completed: return "已完成"
+        case .pending: return "待处理"
+        case .closed: return "已关闭"
+        case .returned: return "已退回"
+        }
+    }
+}
 
 @MainActor
 final class HistoryStore: ObservableObject {
@@ -9,13 +28,21 @@ final class HistoryStore: ObservableObject {
     @Published var error: String?
     @Published private(set) var hasMore = false
     private var page = 0
+    private var requestNumber = 0
     private let pageSize = 20
 
-    func load(unit: String, abnormal: Bool, nextPage: Bool = false) async {
-        guard !loading else { return }
+    func load(unit: String, abnormal: Bool, status: String, nextPage: Bool = false) async {
+        guard !nextPage || !loading else { return }
+        requestNumber += 1
+        let request = requestNumber
+        if !nextPage {
+            rows = []
+            page = 0
+            hasMore = false
+        }
         loading = true
         error = nil
-        defer { loading = false }
+        defer { if request == requestNumber { loading = false } }
         let requestedPage = nextPage ? page + 1 : 1
         var parameters = ["page": String(requestedPage), "rows": String(pageSize), "search_name": ""]
         let path: String
@@ -23,7 +50,7 @@ final class HistoryStore: ObservableObject {
             path = "SIPAIIS_DataCenter/maintenance/abnormity/getList.do"
             parameters["unitId"] = unit
             parameters["pSectionId"] = ""
-            parameters["status"] = "0"
+            parameters["status"] = status
         } else {
             path = "SIPAIIS_Equipment/maintenance/getMDetailList.do"
             parameters["type"] = "3"
@@ -33,6 +60,7 @@ final class HistoryStore: ObservableObject {
         do {
             let raw = try await Net.shared.post(path, parameters)
             try Task.checkCancellation()
+            guard request == requestNumber else { return }
             let root = Net.dict(raw)
             let nested = Net.dict(root["result"])
             guard let result = root["rows"] ?? nested["rows"] ?? (raw as? [[String: Any]]) else {
@@ -45,7 +73,7 @@ final class HistoryStore: ObservableObject {
             let total = max(Net.int(root, "total"), Net.int(nested, "total"))
             hasMore = !received.isEmpty && (total > 0 ? page * pageSize < total : received.count == pageSize)
         } catch {
-            if !Task.isCancelled { self.error = error.localizedDescription }
+            if !Task.isCancelled && request == requestNumber { self.error = error.localizedDescription }
         }
     }
 }
@@ -55,53 +83,109 @@ struct HistoryListScreen: View {
     @StateObject private var store = HistoryStore()
     @Environment(\.dismiss) private var dismiss
     let abnormal: Bool
+    @State private var status: AbnormalHistoryStatus = .all
+    @State private var showingStatuses = false
 
     var body: some View {
         VStack(spacing: 0) {
             BlueHeader(title: abnormal ? "异常记录" : "缺陷记录", back: { dismiss() })
 
-            if store.loading && store.rows.isEmpty {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if store.rows.isEmpty {
-                EmptyHint(text: store.error ?? "暂无历史任务")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(store.rows.enumerated()), id: \.offset) { _, d in
-                            NavigationLink {
-                                HistoryDetailScreen(recordId: Net.str(d, "id"), abnormal: abnormal)
-                                    .environmentObject(app)
+            if abnormal {
+                Button {
+                    showingStatuses.toggle()
+                } label: {
+                    Text(status.title)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(alignment: .trailing) {
+                            Image(systemName: showingStatuses ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 12)).padding(.trailing, 14)
+                        }
+                        .foregroundColor(C.text)
+                        .background(Color.white)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("记录状态")
+                .accessibilityValue(status.title)
+            }
+
+            ZStack(alignment: .top) {
+                records
+                if showingStatuses {
+                    Color.black.opacity(0.001)
+                        .onTapGesture { showingStatuses = false }
+                        .accessibilityHidden(true)
+                    VStack(spacing: 0) {
+                        ForEach(AbnormalHistoryStatus.allCases) { option in
+                            Button {
+                                showingStatuses = false
+                                status = option
                             } label: {
-                                HistoryTaskRow(
-                                    id: displayNumber(d),
-                                    status: abnormal ? statusText(Net.str(d, "status")) : "已完成",
-                                    fields: fields(d))
+                                Text(option.title)
+                                    .foregroundColor(C.text)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .disabled(Net.str(d, "id").isEmpty)
-                        }
-                        if store.loading { ProgressView().padding() }
-                        if let error = store.error {
-                            Text(error).font(.footnote).foregroundColor(C.sub)
-                        }
-                        if store.hasMore && !store.loading {
-                            Button("加载更多") { Task { await reload(nextPage: true) } }
-                                .padding(10)
+                            .accessibilityAddTraits(status == option ? .isSelected : [])
                         }
                     }
-                    .padding(.vertical, 4)
+                    .background(Color.white)
+                    .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
                 }
-                .background(C.bg)
-                .refreshable { await reload() }
             }
         }
+        .background(C.bg)
         .navigationBarHidden(true)
-        .task { await reload() }
+        .task(id: status) { await reload() }
+    }
+
+    @ViewBuilder
+    private var records: some View {
+        if store.loading && store.rows.isEmpty {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if store.rows.isEmpty {
+            VStack {
+                EmptyHint(text: store.error ?? "暂无历史记录")
+                if store.error != nil {
+                    Button("重试") { Task { await reload() } }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(store.rows.enumerated()), id: \.offset) { _, d in
+                        NavigationLink {
+                            HistoryDetailScreen(recordId: Net.str(d, "id"), abnormal: abnormal)
+                                .environmentObject(app)
+                        } label: {
+                            if abnormal {
+                                abnormalCard(d)
+                            } else {
+                                HistoryTaskRow(id: displayNumber(d), status: "已完成", fields: fields(d))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(Net.str(d, "id").isEmpty)
+                    }
+                    if store.loading { ProgressView().padding() }
+                    if let error = store.error {
+                        Text(error).font(.footnote).foregroundColor(C.sub)
+                    }
+                    if store.hasMore && !store.loading {
+                        Button("加载更多") { Task { await reload(nextPage: true) } }
+                            .padding(10)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .background(C.bg)
+            .refreshable { await reload() }
+        }
     }
 
     private func reload(nextPage: Bool = false) async {
-        await store.load(unit: app.unit, abnormal: abnormal, nextPage: nextPage)
+        await store.load(unit: app.unit, abnormal: abnormal, status: status.rawValue, nextPage: nextPage)
     }
 
     private func displayNumber(_ row: [String: Any]) -> String {
@@ -122,12 +206,43 @@ struct HistoryListScreen: View {
         ].filter { !$0.1.isEmpty }
     }
 
-    private func statusText(_ s: String) -> String {
-        switch s {
-        case "1": return "待处理"
-        case "2": return "处理中"
-        case "3": return "已完成"
-        default:  return s.isEmpty ? "已完成" : s
+    private func abnormalCard(_ row: [String: Any]) -> some View {
+        let unit = Net.str(Net.dict(row["unit"]), "name")
+        let section = Net.dict(row["processSection"])
+        let shortSection = Net.str(section, "sname")
+        let location = shortSection.isEmpty ? Net.str(section, "name") : shortSection
+        let reporter = Net.str(Net.dict(row["insertUser"]), "caption")
+        let name = reporter.isEmpty ? Net.str(Net.dict(row["submitUser"]), "caption") : reporter
+        let time = Net.str(row, "insdt").replacingOccurrences(of: "T", with: " ")
+        let displayTime = time.count >= 16 ? String(time.dropFirst(5).prefix(11)) : time
+        let description = Net.str(row, "abnormityDescription")
+        let remark = Net.str(row, "remark")
+        let content = [unit.isEmpty ? app.unitName : unit, location, Net.str(row, "equipmentNames"),
+                       description, remark].filter { !$0.isEmpty && $0 != "null" }
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(content.enumerated()), id: \.offset) { _, value in
+                    Text(value).foregroundColor(C.text)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+
+            HStack {
+                Text(displayTime).foregroundColor(C.sub)
+                Spacer()
+                Text(name).foregroundColor(C.bar)
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 34)
+            .background(Color(hex: 0xEDEDED))
         }
+        .font(.system(size: 15))
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .contentShape(Rectangle())
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 }

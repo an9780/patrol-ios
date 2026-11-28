@@ -64,6 +64,8 @@ struct HomeScreen: View {
     @State private var showReport = false
     @State private var showEquSearch = false
     @State private var showDispatch = false
+    @State private var showPipeline = false
+    @State private var showVideo = false
     @State private var showPlants = false
     @State private var selectedPlant = ""
 
@@ -154,38 +156,65 @@ struct HomeScreen: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 10).padding(.bottom, 5)
 
-                // ── 第一行模块（60dp，4 个）──
-                HStack(spacing: 0) {
-                    module("巡检任务", "moudle_fg_main_patrol") { showPatrol = true }
-                    module("异常上报", "moudle_fg_main_fault") { showReport = true }
-                    module("调度申请", "moudle_fg_main_data") { showDispatch = true }
-                    module("设备查询", "moudle_fg_main_equ") { showEquSearch = true }
-                }
-                .frame(height: 60)
-                .padding(.top, 10).padding(.bottom, 10)
+                VStack(spacing: 10) {
+                    HStack(spacing: 0) {
+                        module("巡检任务", "moudle_fg_main_patrol") { showPatrol = true }
+                        module("异常上报", "moudle_fg_main_fault") { showReport = true }
+                        module("调度申请", "moudle_fg_main_data") { showDispatch = true }
+                        module("设备查询", "moudle_fg_main_equ") { showEquSearch = true }
+                    }
+                    .frame(height: 60)
 
-                // ── 第二行模块 ──
-                HStack(spacing: 0) {
-                    module("历史报警", "moudle_fg_main_alarm") { showAlarm = true }
-                    module("保养工单", "moudle_fg_main_com_adj") { showMaintain = true }
+                    HStack(spacing: 0) {
+                        module("历史报警", "moudle_fg_main_alarm") { showAlarm = true }
+                        module("保养工单", "moudle_fg_main_com_adj") { showMaintain = true }
+                        module("管网巡检", "moudle_fg_main_file") { showPipeline = true }
+                        module("视频监控", "moudle_fg_main_video") { showVideo = true }
+                    }
+                    .frame(height: 60)
                 }
-                .frame(height: 60)
-                .padding(.bottom, 10)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(Color.white)
 
                 HomePlantReadings(unit: app.unit)
             }
         }
-        .background(C.bg)
+        .background(alignment: .top) {
+            Color.clear.frame(height: 1)
+                .background(C.bar, ignoresSafeAreaEdges: .top)
+        }
+        .background(C.bg, ignoresSafeAreaEdges: [])
         .navigationBarHidden(true)
-        .sheet(isPresented: $showPatrol) { PatrolScreen().environmentObject(app) }
-        .sheet(isPresented: $showReport) { FaultReportScreen().environmentObject(app) }
-        .sheet(isPresented: $showAlarm) { AlarmScreen().environmentObject(app) }
-        .sheet(isPresented: $showMaintain) { MaintainScreen().environmentObject(app) }
-        .sheet(isPresented: $showEquSearch) {
+        .fullScreenCover(isPresented: $showPatrol) { PatrolScreen().environmentObject(app) }
+        .fullScreenCover(isPresented: $showReport) { FaultReportScreen().environmentObject(app) }
+        .fullScreenCover(isPresented: $showAlarm) { AlarmScreen().environmentObject(app) }
+        .fullScreenCover(isPresented: $showMaintain) { MaintainScreen().environmentObject(app) }
+        .fullScreenCover(isPresented: $showEquSearch) {
             NavigationView { EquipmentSearchScreen().environmentObject(app) }
         }
-        .sheet(isPresented: $showDispatch) {
+        .fullScreenCover(isPresented: $showDispatch) {
             NavigationView { ScheduleListScreen().environmentObject(app) }
+        }
+        .fullScreenCover(isPresented: $showPipeline) {
+            VStack(spacing: 0) {
+                BlueHeader(title: "管网巡检", back: { showPipeline = false })
+                EmptyHint(text: "管网地图暂未接入")
+                Spacer()
+            }
+            .background(C.bg)
+        }
+        .fullScreenCover(isPresented: $showVideo) {
+            NavigationView {
+                VideoCatalogScreen()
+                    .environmentObject(app)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("返回") { showVideo = false }
+                        }
+                    }
+            }
+            .navigationViewStyle(.stack)
         }
         .sheet(isPresented: $showPlants) {
             VStack(spacing: 12) {

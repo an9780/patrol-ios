@@ -56,12 +56,18 @@ final class AppState: ObservableObject {
     @Published var busy = false
     @Published var toast: String?
     @Published var tab = 0
+    @Published private(set) var rememberPassword: Bool
+    @Published private(set) var autoLogin: Bool
+    private var attemptedAutoLogin = false
 
     init() {
         let d = UserDefaults.standard
         unit = ""
         user = d.string(forKey: "user") ?? ""
         date = AppState.today()
+        let remember = d.bool(forKey: "rememberPassword")
+        rememberPassword = remember
+        autoLogin = remember && d.bool(forKey: "autoLogin")
     }
 
     static func today() -> String {
@@ -76,11 +82,42 @@ final class AppState: ObservableObject {
         }
     }
 
+    func setRememberPassword(_ enabled: Bool) {
+        rememberPassword = enabled
+        UserDefaults.standard.set(enabled, forKey: "rememberPassword")
+        if !enabled {
+            RememberedLogin.clear()
+            setAutoLogin(false)
+        }
+    }
+
+    func setAutoLogin(_ enabled: Bool) {
+        if enabled && !rememberPassword { setRememberPassword(true) }
+        autoLogin = enabled
+        UserDefaults.standard.set(enabled, forKey: "autoLogin")
+    }
+
+    func savedPassword() -> String {
+        guard rememberPassword else { return "" }
+        return RememberedLogin.password(for: user) ?? ""
+    }
+
+    func loginOnLaunch(password: String) async {
+        guard !attemptedAutoLogin else { return }
+        attemptedAutoLogin = true
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--patrol-ui-test") { return }
+        #endif
+        if autoLogin && !password.isEmpty { await login(password: password) }
+    }
+
     func login(password: String) async {
         guard !busy, !user.isEmpty, !password.isEmpty else { return }
         busy = true
+        defer { busy = false }
+        let account = user
         do {
-            let r = try await Net.shared.login(user: user, password: password)
+            let r = try await Net.shared.login(user: account, password: password)
             await loadPlants()
             guard let initialUnit = plants.first(where: { $0.id == r.bizid }) ?? plants.first
                     ?? (r.bizid.isEmpty ? nil : FormOption(id: r.bizid, name: r.bizid)) else {
@@ -92,12 +129,16 @@ final class AppState: ObservableObject {
             caption = r.caption
             totalLoginHours = r.totalLoginHours
             lastLogin = r.lastLogin
+            if rememberPassword && !RememberedLogin.save(user: account, password: password) {
+                RememberedLogin.clear()
+                setAutoLogin(false)
+                show("登录成功，密码未能保存到钥匙串。")
+            }
+            UserDefaults.standard.set(account, forKey: "user")
             loggedIn = true
-            UserDefaults.standard.set(user, forKey: "user")
         } catch {
             show("登录失败：\(error.localizedDescription)")
         }
-        busy = false
     }
 
     func loadPlants() async {
@@ -115,6 +156,9 @@ final class AppState: ObservableObject {
     }
 
     func logout() {
+        attemptedAutoLogin = true
+        setAutoLogin(false)
+        tab = 0
         plants = []
         totalLoginHours = ""
         lastLogin = ""
@@ -164,14 +208,7 @@ struct LoginView: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                Image("moudle_ic_login_bg")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-                    .ignoresSafeArea()
-
+            ScrollView {
                 VStack(spacing: 0) {
                     // Logo：295x100，padding 18，marginTop 70
                     Image("moudle_ipatrol_logo")
@@ -179,7 +216,7 @@ struct LoginView: View {
                         .scaledToFit()
                         .padding(18)
                         .frame(width: 295, height: 100)
-                        .padding(.top, 70)
+                        .padding(.top, min(70, geo.size.height * 0.08))
 
                     // 输入区：左右 25，top 20
                     VStack(spacing: 0) {
@@ -191,6 +228,7 @@ struct LoginView: View {
                                       prompt: Text("请输入用户名").foregroundColor(.white))
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
+                                .textContentType(.username)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .padding(.horizontal, 15)
@@ -206,12 +244,13 @@ struct LoginView: View {
                                 .padding(8).frame(width: 34, height: 34)
                             Group {
                                 if showPassword {
-                                    TextField("请输入密码", text: $password)
+                                    TextField("", text: $password, prompt: Text("请输入密码").foregroundColor(.white.opacity(0.75)))
                                         .autocapitalization(.none).disableAutocorrection(true)
                                 } else {
-                                    SecureField("请输入密码", text: $password)
+                                    SecureField("", text: $password, prompt: Text("请输入密码").foregroundColor(.white.opacity(0.75)))
                                 }
                             }
+                                .textContentType(.password)
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 15)
@@ -244,6 +283,18 @@ struct LoginView: View {
                     .padding(.top, 15)
                     .frame(height: 40)
 
+                    HStack {
+                        loginOption("记住密码", checked: app.rememberPassword) {
+                            app.setRememberPassword(!app.rememberPassword)
+                        }
+                        Spacer(minLength: 10)
+                        loginOption("自动登录", checked: app.autoLogin) {
+                            app.setAutoLogin(!app.autoLogin)
+                        }
+                    }
+                    .frame(width: 250)
+                    .padding(.top, 4)
+
                     // 登录
                     Button {
                         Task { await app.login(password: password) }
@@ -269,15 +320,14 @@ struct LoginView: View {
                     }
                     .padding(.top, 12)
 
-                    Spacer()
+                    Spacer(minLength: 30)
 
                     Text("本平台为互联网非涉密平台，严禁处理、传输国家秘密")
-                        .font(.system(size: 22))
+                        .font(.system(size: 16))
                         .foregroundColor(.red)
                         .multilineTextAlignment(.center)
-                        .padding(40)
-
-                    Spacer().frame(height: 0)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 14)
 
                     // 版本 + 备案号
                     VStack(alignment: .trailing, spacing: 4) {
@@ -290,8 +340,27 @@ struct LoginView: View {
                     .padding(.trailing, 15)
                     .padding(.bottom, 10)
                 }
+                .frame(minHeight: geo.size.height)
+                .disabled(app.busy)
             }
         }
+        .background {
+            GeometryReader { background in
+                Image("moudle_ic_login_bg")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: background.size.width, height: background.size.height)
+                    .clipped()
+            }
+            .ignoresSafeArea(.container)
+        }
+        .background(Color(hex: 0x1469D4).ignoresSafeArea())
+        .preferredColorScheme(.dark)
+        .task {
+            password = app.savedPassword()
+            await app.loginOnLaunch(password: password)
+        }
+        .onChange(of: app.user) { _ in password = app.savedPassword() }
         .sheet(isPresented: $showSettings, onDismiss: {
             if previewRequested { previewRequested = false; showPreview = true }
         }) {
@@ -324,6 +393,17 @@ struct LoginView: View {
             }
         }
     }
+    private func loginOption(_ title: String, checked: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: checked ? "checkmark.square.fill" : "square")
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .frame(minHeight: 34)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(checked ? .isSelected : [])
+    }
+
 }
 
 // MARK: - 主框架（照 activity_main_app.xml 还原：4 个 Tab，50dp 高）
@@ -412,6 +492,7 @@ struct BlueHeader: View {
             .padding(.trailing, 12)
         }
         .frame(height: 50)
+        .background(C.bar, ignoresSafeAreaEdges: .top)
     }
 }
 

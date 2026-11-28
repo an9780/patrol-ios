@@ -91,11 +91,20 @@ struct MyScreen: View {
             Button("退出", role: .destructive) { app.logout() }
             Button("取消", role: .cancel) {}
         }
-        .sheet(isPresented: $showAbout) {
-            NavigationView { AboutScreen() }
+        .fullScreenCover(isPresented: $showAbout) {
+            AboutScreen()
         }
-        .sheet(isPresented: $showKnowledge) {
-            NavigationView { KnowledgeTreeScreen().environmentObject(app) }
+        .fullScreenCover(isPresented: $showKnowledge) {
+            NavigationView {
+                KnowledgeTreeScreen()
+                    .environmentObject(app)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("返回") { showKnowledge = false }
+                        }
+                    }
+            }
+            .navigationViewStyle(.stack)
         }
     }
 

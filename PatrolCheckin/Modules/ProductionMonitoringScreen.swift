@@ -16,6 +16,19 @@ struct ProductionMonitoringScreen: View {
     @State private var more = false
     @State private var loading = false
     @State private var error: String?
+    @State private var sectionError: String?
+    @State private var requestNumber = 0
+    @State private var sectionsLoaded = false
+
+    private struct PointFilter: Equatable {
+        let unit: String
+        let section: String
+        let signal: String
+    }
+
+    private var filter: PointFilter {
+        PointFilter(unit: app.unit, section: sectionCode, signal: signal)
+    }
 
     private struct Reading: Identifiable {
         let id: String
@@ -32,29 +45,40 @@ struct ProductionMonitoringScreen: View {
                 if tab == 0 {
                     centralMonitoring
                 } else {
-                    HStack {
+                    HStack(spacing: 0) {
                         Picker("工艺段", selection: $sectionCode) {
-                            Text("全部工艺段").tag("")
+                            if sections.isEmpty { Text("工艺段").tag("") }
                             ForEach(sections) { section in Text(section.name).tag(section.id) }
                         }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
                         .accessibilityLabel("工艺段")
-                        Spacer()
+                        .frame(maxWidth: .infinity)
+                        Divider().frame(height: 22)
                         Picker("信号类型", selection: $signal) {
                             Text("全部信号").tag("")
-                            Text("模拟量").tag("AI")
-                            Text("开关量").tag("DI")
+                            ForEach(["AI", "DI", "AO", "DO"], id: \.self) { type in
+                                Text(type).tag(type)
+                            }
                         }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
                         .accessibilityLabel("信号类型")
+                        .frame(maxWidth: .infinity)
                     }
                     .padding(.horizontal, 16)
                     .frame(minHeight: 40)
                     .background(Color(uiColor: .systemGray6))
-                    .disabled(loading)
+                    .disabled(!sectionsLoaded)
                     List {
+                        if let sectionError = sectionError {
+                            Text(sectionError).foregroundColor(.red)
+                            Button("重试读取工艺段") { Task { await loadSections() } }
+                        }
                         if let error = error {
                             Text(error).foregroundColor(.red)
                             Button("重试") { Task { await load(page: 1) } }
-                        } else if points.isEmpty && !loading {
+                        } else if sectionsLoaded && points.isEmpty && !loading {
                             Text("暂无测点").foregroundColor(.secondary)
                         }
                         ForEach(points) { point in
@@ -67,9 +91,7 @@ struct ProductionMonitoringScreen: View {
                     }
                     .listStyle(.plain)
                     .refreshable { await load(page: 1) }
-                    .onChange(of: sectionCode) { _ in Task { await load(page: 1) } }
-                    .onChange(of: signal) { _ in Task { await load(page: 1) } }
-                    .task { if page == 0 { await load(page: 1) } }
+                    .task(id: filter) { await load(page: 1) }
                 }
             }
             .task(id: app.unit) {
@@ -165,58 +187,86 @@ struct ProductionMonitoringScreen: View {
         }
     }
 
-    private func makeReading(_ row: [String: Any]) -> Reading? {
+    private func makeReading(_ row: [String: Any], sectionName: String = "") -> Reading? {
         let id = Net.str(row, "id")
         guard !id.isEmpty else { return nil }
-        let name = Net.str(row, "parmname")
-        let value = Net.str(row, "parmvalue")
-        let digital = Net.str(row, "signaltype") == "DI" || Net.str(row, "signalType") == "DI"
-        return Reading(id: id, name: name.isEmpty ? id : name,
-                       value: digital || value.isEmpty ? value : value + Net.str(row, "unit"),
+        let name = Net.str(row, "parmname").replacingOccurrences(of: "入水", with: "进水")
+        let location = sectionName.replacingOccurrences(of: "入水", with: "进水")
+        let direction = ["进水", "出水"].filter { location.contains($0) }
+        let label = direction.count == 1 && !name.contains("进水") && !name.contains("出水") && !name.isEmpty
+            ? direction[0] + name : name
+        let value = PlantReadingValue.clean(Net.str(row, "parmvalue"))
+        let kind = Net.str(row, "signaltype")
+        let signalType = (kind.isEmpty ? Net.str(row, "signalType") : kind).uppercased()
+        let digital = signalType == "DI" || signalType == "DO"
+        return Reading(id: id, name: label.isEmpty ? id : label,
+                       value: digital || value.isEmpty ? value : value + PlantReadingValue.clean(Net.str(row, "unit")),
                        digital: digital)
     }
 
     private func load(page requestedPage: Int) async {
-        guard !loading else { return }
+        let current = filter
+        guard !current.section.isEmpty, requestedPage == 1 || !loading else { return }
+        requestNumber += 1
+        let request = requestNumber
+        if requestedPage == 1 {
+            points = []
+            page = 0
+            more = false
+        }
         loading = true
-        defer { loading = false }
+        defer { if requestNumber == request { loading = false } }
         error = nil
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_DataCenter/work/processSection/getMPointByProcessSection4APP.do",
-                ["bizid": app.unit, "processSectionCode": sectionCode,
-                 "page": String(requestedPage), "rows": "20", "sort": "ParmName", "signaltype": signal])
+                ["bizid": current.unit, "processSectionCode": current.section,
+                 "page": String(requestedPage), "rows": "20", "sort": "ParmName", "signaltype": current.signal])
             try Task.checkCancellation()
+            guard requestNumber == request, filter == current else { return }
             let root = Net.dict(raw)
             let result = Net.dict(root["result"])
-            guard let records = root["rows"] ?? result["rows"] ?? root["result"], !(records is NSNull) else {
+            guard let records = result["list"] ?? result["rows"] ?? root["rows"] ?? root["result"],
+                  !(records is NSNull) else {
                 throw APIError.message("服务未返回测点列表")
             }
             let rows = Net.array(records)
-            if requestedPage == 1 { points = [] }
+            let sectionName = sections.first { $0.id == current.section }?.name ?? ""
             var ids = Set(points.map(\.id))
-            for point in rows.compactMap(makeReading) where ids.insert(point.id).inserted {
+            let decoded = rows.compactMap { makeReading($0, sectionName: sectionName) }
+            for point in decoded where ids.insert(point.id).inserted {
                 points.append(point)
             }
             page = requestedPage
-            more = rows.count == 20
+            let total = Net.int(result, "total")
+            more = !rows.isEmpty && (total > 0 ? requestedPage * 20 < total : rows.count == 20)
         } catch {
-            if !Task.isCancelled { self.error = error.localizedDescription }
+            if !Task.isCancelled && requestNumber == request { self.error = error.localizedDescription }
         }
     }
 
     private func loadSections() async {
+        sectionError = nil
+        sectionsLoaded = false
         do {
             let raw = try await Net.shared.post("SIPAIIS_DataCenter/work/processSection/getlist.do",
                 ["unitId": app.unit, "page": "1", "rows": "1000"])
-            sections = Net.array(raw, key: "rows").compactMap { row in
+            try Task.checkCancellation()
+            let root = Net.dict(raw)
+            let records = root["rows"] ?? Net.dict(root["result"])["rows"] ?? root["result"] ?? raw
+            sections = Net.array(records).compactMap { row in
                 let code = Net.str(row, "code")
                 let name = Net.str(row, "name")
                 guard !code.isEmpty, !name.isEmpty else { return nil }
                 return FormOption(id: code, name: name)
             }
+            if !sections.contains(where: { $0.id == sectionCode }) {
+                sectionCode = sections.first?.id ?? ""
+            }
+            sectionsLoaded = true
+            if sections.isEmpty { sectionError = "后台未返回可用工艺段。" }
         } catch {
-            if !Task.isCancelled { self.error = error.localizedDescription }
+            if !Task.isCancelled { sectionError = error.localizedDescription }
         }
     }
 }

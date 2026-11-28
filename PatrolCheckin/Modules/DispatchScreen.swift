@@ -77,8 +77,6 @@ final class DispatchStore: ObservableObject {
     @Published var detailRows: [(String, String)] = []
     @Published var steps: [FlowStep] = []
     @Published var detailError: String?
-    @Published var uploading = false
-    @Published var submitting = false
 
     // MARK: 列表
     /// 照 j5/a.smali：调度单页签走 processAdjustment/getTaskList.do
@@ -168,105 +166,7 @@ final class DispatchStore: ObservableObject {
         loading = false
     }
 
-    /// 当前可操作的步骤（最后一条带 taskid 的）
-    func currentStep(taskId: String?) -> FlowStep? {
-        guard let taskId = taskId, !taskId.isEmpty else { return nil }
-        return steps.last { $0.isActionable && $0.taskid == taskId }
-    }
-
-    // MARK: 上传
-    func uploadPhotos(_ images: [UIImage], orderId: String, taskId: String?) async -> Bool {
-        guard let step = currentStep(taskId: taskId) else {
-            detailError = "没有待办步骤，无法上传"
-            return false
-        }
-        uploading = true
-        defer { uploading = false }
-
-        var files: [Net.UploadFile] = []
-        for (i, img) in images.enumerated() {
-            guard let data = img.jpegData(compressionQuality: 0.72) else { continue }
-            files.append(Net.UploadFile(
-                field: "filelist",
-                filename: "IMG_\(Int(Date().timeIntervalSince1970))_\(i).jpg",
-                mime: "image/jpeg",
-                data: data))
-        }
-        guard !files.isEmpty else { detailError = "没有图片"; return false }
-
-        do {
-            let raw = try await Net.shared.upload(
-                "SIPAIIS_Base/base/updateFile.do",
-                fields: [
-                    "masterId": step.taskid,
-                    "tbName": "tb_common_file",
-                    "nameSpace": "taskmaterial",
-                    "recordId": orderId,
-                ],
-                files: files)
-            let ok = Net.isOK(raw)
-            if !ok {
-                detailError = "上传返回：\(Net.message(raw))"
-            }
-            return ok
-        } catch {
-            detailError = "上传失败：\(error.localizedDescription)"
-            return false
-        }
-    }
-
-    // MARK: 提交
-    func submit(orderId: String, taskId: String?, opinion: String) async -> Bool {
-        guard let step = currentStep(taskId: taskId) else {
-            detailError = "没有待办步骤"
-            return false
-        }
-        submitting = true
-        defer { submitting = false }
-
-        let body: [String: Any] = [
-            "taskid": step.taskid,
-            "taskdefinitionkey": step.taskdefinitionkey,
-            "taskCopyUserIds": "",
-            "targetusers": "",
-            "processid": step.processid,
-            "processDefId": "",
-            "passstatus": true,
-            "businessid": orderId,
-            "fieldValue": "",
-            "fieldName": "",
-            "fieldList": "[]",
-            "auditopinion": opinion,
-        ]
-        do {
-            var req = URLRequest(url: URL(string: Net.shared.base
-                + "/SIPAIIS_DataCenter/work/processAdjustment/doAuditDetail.do")!)
-            req.httpMethod = "POST"
-            req.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-            if !Net.shared.token.isEmpty {
-                req.setValue(Net.shared.token, forHTTPHeaderField: "token")
-            }
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-                detailError = "提交 HTTP 异常"
-                return false
-            }
-            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let ok = Net.int(obj, "code") == 1
-                if !ok { detailError = Net.str(obj, "msg") }
-                return ok
-            }
-            detailError = String((String(data: data, encoding: .utf8) ?? "").prefix(160))
-            return false
-        } catch {
-            detailError = "提交失败：\(error.localizedDescription)"
-            return false
-        }
-    }
 }
-
-// MARK: - 调度单列表
 
 struct DispatchScreen: View {
     @EnvironmentObject var app: AppState
@@ -293,7 +193,14 @@ struct DispatchScreen: View {
                 LazyVStack(spacing: 6) {
                     ForEach(visibleOrders) { order in
                         NavigationLink {
-                            DispatchDetailScreen(orderId: order.businessId, previewContents: order.contents, taskId: order.taskId)
+                            if order.taskId.isEmpty {
+                                DispatchDetailScreen(orderId: order.businessId, previewContents: order.contents)
+                            } else {
+                                ScheduleAuditScreen(taskId: order.taskId, businessId: order.businessId,
+                                                    previewContents: order.contents, onSubmitted: {
+                                    Task { await store.loadList() }
+                                })
+                            }
                         } label: {
                             card(order)
                         }
@@ -332,21 +239,9 @@ struct DispatchScreen: View {
 }
 
 struct DispatchDetailScreen: View {
-    @State private var showAudit = false
-    @EnvironmentObject var app: AppState
     let orderId: String
     var previewContents: String = ""
-    var taskId: String? = nil
-
     @StateObject private var store = DispatchStore()
-    @State private var picked: [UIImage] = []
-    @State private var showCamera = false
-    @State private var showLibrary = false
-    @State private var opinion = "已完成"
-
-    private var canAct: Bool {
-        store.currentStep(taskId: taskId) != nil && !store.uploading && !store.submitting
-    }
 
     var body: some View {
         ScrollView {
@@ -428,108 +323,6 @@ struct DispatchDetailScreen: View {
                 )
                 .padding(8)
 
-                if let taskId = taskId, !taskId.isEmpty {
-                    // 拍照区
-                    VStack(spacing: 10) {
-                        if picked.isEmpty {
-                            Button {
-                                showCamera = true
-                            } label: {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "camera.fill").font(.system(size: 30))
-                                    Text("拍照").font(.system(size: 15, weight: .medium))
-                                    Text("拍完点下面「上传并完成」").font(.system(size: 11))
-                                        .foregroundColor(C.sub)
-                                }
-                                .frame(maxWidth: .infinity).padding(.vertical, 26)
-                                .background(C.cardBg).cornerRadius(10)
-                                .overlay(RoundedRectangle(cornerRadius: 10)
-                                    .stroke(C.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [5])))
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(Array(picked.enumerated()), id: \.offset) { idx, img in
-                                        ZStack(alignment: .topTrailing) {
-                                            Image(uiImage: img)
-                                                .resizable().scaledToFill()
-                                                .frame(width: 92, height: 92).clipped()
-                                                .cornerRadius(8)
-                                            Button {
-                                                picked.remove(at: idx)
-                                            } label: {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .foregroundColor(.white)
-                                                    .background(Circle().fill(Color.black.opacity(0.5)))
-                                            }
-                                            .offset(x: 4, y: -4)
-                                        }
-                                    }
-                                    Button {
-                                        showCamera = true
-                                    } label: {
-                                        VStack(spacing: 4) {
-                                            Image(systemName: "camera.fill")
-                                            Text("继续拍").font(.system(size: 10))
-                                        }
-                                        .frame(width: 92, height: 92)
-                                        .background(C.cardBg).cornerRadius(8)
-                                        .overlay(RoundedRectangle(cornerRadius: 8)
-                                            .stroke(C.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [4])))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            HStack {
-                                Text("已拍 \(picked.count) 张").font(.system(size: 12)).foregroundColor(C.sub)
-                                Spacer()
-                                Button("从相册选") { showLibrary = true }
-                                    .font(.system(size: 12)).foregroundColor(C.blue)
-                            }
-                        }
-                    }
-                    .padding(14).background(Color.white).cornerRadius(10)
-
-                    // 提交
-                    VStack(spacing: 10) {
-                        Button {
-                            Task {
-                                if !picked.isEmpty {
-                                    let up = await store.uploadPhotos(picked, orderId: orderId, taskId: taskId)
-                                    guard up else { return }
-                                }
-                                let ok = await store.submit(orderId: orderId, taskId: taskId, opinion: opinion)
-                                if ok {
-                                    app.show("调度单已完成 ✓")
-                                    picked = []
-                                    await store.loadDetail(orderId)
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if store.uploading || store.submitting {
-                                    ProgressView().tint(.white)
-                                }
-                                Text(store.uploading ? "上传中…"
-                                     : store.submitting ? "提交中…"
-                                     : "上传并完成")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
-                            .frame(maxWidth: .infinity).padding(.vertical, 15)
-                            .background(canAct ? C.blue : C.sub.opacity(0.4))
-                            .foregroundColor(.white).cornerRadius(10)
-                        }
-                        .disabled(!canAct)
-
-                        if store.currentStep(taskId: taskId) == nil && !store.loading {
-                            Text("这张单没有待办步骤，可能已处理完毕")
-                                .font(.caption).foregroundColor(.orange)
-                        }
-
-                    }
-                    .padding(14).background(Color.white).cornerRadius(10)
-                }
                 if let error = store.detailError {
                     Text(error).font(.caption).foregroundColor(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -573,26 +366,7 @@ struct DispatchDetailScreen: View {
         .background(C.bg)
         .navigationTitle("调度单")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showCamera) {
-            CameraPicker(images: $picked, useCamera: true)
-        }
-        .sheet(isPresented: $showLibrary) {
-            CameraPicker(images: $picked, useCamera: false)
-        }
         .task { await store.loadDetail(orderId) }
-        .sheet(isPresented: $showAudit) {
-            NavigationView {
-                ScheduleAuditScreen(taskId: taskId ?? "", businessId: orderId)
-                    .environmentObject(app)
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if store.currentStep(taskId: taskId) != nil {
-                    Button("审核") { showAudit = true }
-                }
-            }
-        }
     }
 }
 

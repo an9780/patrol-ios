@@ -321,13 +321,9 @@ struct RemarkImageScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 标题栏
-            ZStack {
-                LinearGradient(colors: [C.gradStart, C.gradEnd],
-                               startPoint: .leading, endPoint: .trailing)
-                Text("补充图片").font(.system(size: 15)).foregroundColor(.white)
-            }
-            .frame(height: 50)
+            BlueHeader(title: "补充图片", back: {
+                if !busy { presentation.wrappedValue.dismiss() }
+            })
 
             // 「点击图片」提示条（#E9E9E9 描边，padding 6）
             Text("点击图片")

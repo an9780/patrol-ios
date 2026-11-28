@@ -57,17 +57,13 @@ struct FaultReportScreen: View {
                         // * 上报人
                         HStack(spacing: 0) {
                             Text("* 上报人")
-                                .font(.system(size: 16))
-                                .padding(.leading, 10)
-                                .frame(height: 35, alignment: .center)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(width: 100, alignment: .leading)
                             Text(app.caption)
-                                .font(.system(size: 16))
-                                .padding(.leading, 10)
-                                .frame(height: 35, alignment: .center)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .layoutPriority(3)
                         }
+                        .font(.system(size: 16))
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 35)
 
                         divider
 
@@ -120,7 +116,6 @@ struct FaultReportScreen: View {
                         .frame(height: 135, alignment: .top)
 
                         divider
-                        divider
 
                         // 附件提示
                         Text("点击查看附件，长按删除")
@@ -172,6 +167,7 @@ struct FaultReportScreen: View {
                                     .frame(width: 60, height: 100)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("从相册选择附件")
                         }
                         .frame(height: 105)
 
@@ -258,7 +254,7 @@ struct FaultReportScreen: View {
         }
         .navigationBarHidden(true)
         .interactiveDismissDisabled(busy)
-        .sheet(isPresented: $showSectionPicker) {
+        .fullScreenCover(isPresented: $showSectionPicker) {
             OptionPicker(title: "选择工艺段", options: sections, emptyMessage: sectionsError) { o in
                 guard sectionId != o.id else { return }
                 sectionId = o.id
@@ -267,7 +263,7 @@ struct FaultReportScreen: View {
                 equipmentCodes = [:]
             }
         }
-        .sheet(isPresented: $showEquPicker) {
+        .fullScreenCover(isPresented: $showEquPicker) {
             OptionPicker(title: "选择设备", options: equipments, emptyMessage: equipmentError) { o in
                 equipmentId = o.id
             }
@@ -278,7 +274,7 @@ struct FaultReportScreen: View {
         .sheet(isPresented: $showPhotoLibrary) {
             CameraPicker(images: $photos, useCamera: false)
         }
-        .sheet(isPresented: $showPreview) {
+        .fullScreenCover(isPresented: $showPreview) {
             VStack {
                 BlueHeader(title: "附件预览", back: { showPreview = false })
                 if let image = preview {

@@ -454,16 +454,16 @@ struct PatrolDetailScreen: View {
                 .toolbar { Button("关闭") { pointInfo = nil } }
             }
         }
-        .sheet(isPresented: $showReport) {
+        .fullScreenCover(isPresented: $showReport) {
             FaultReportScreen(patrolRecordID: shiftId).environmentObject(app)
         }
-        .sheet(isPresented: $showImages) {
+        .fullScreenCover(isPresented: $showImages) {
             NavigationView {
                 RemarkImageScreen(recordId: shiftId)
                     .environmentObject(app)
             }
         }
-        .sheet(isPresented: $showRemarks) {
+        .fullScreenCover(isPresented: $showRemarks) {
             NavigationView {
                 TaskRemarksScreen(recordId: shiftId)
                     .environmentObject(app)

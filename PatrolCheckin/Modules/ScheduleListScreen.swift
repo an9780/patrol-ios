@@ -83,7 +83,7 @@ struct ScheduleListScreen: View {
             }
         }
         .navigationBarHidden(true)
-        .sheet(isPresented: $creating, onDismiss: {
+        .fullScreenCover(isPresented: $creating, onDismiss: {
             Task { await store.load(unit: app.unit, keyword: keyword) }
         }) {
             ScheduleCreateScreen().environmentObject(app)
