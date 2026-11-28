@@ -148,14 +148,21 @@ struct PointHistoryScreen: View {
                  "sdt": Self.timestamp.string(from: window.start), "edt": Self.timestamp.string(from: window.end)])
             try Task.checkCancellation()
             let root = Net.dict(raw)
-            let result = root["result"] ?? root["rows"] ?? raw
-            let records = (result as? [[[String: Any]]])?.first ?? Net.array(result)
+            let payload = root["result"] ?? root["rows"] ?? raw
+            let result = Net.dict(payload)
+            guard let records = (payload as? [[[String: Any]]])?.first
+                    ?? Net.objectRows(result["rows"] ?? result["list"] ?? payload) else {
+                throw APIError.message("服务未返回历史数据列表")
+            }
             samples = records.compactMap { record in
                 let time = Net.str(record, "measuredt").replacingOccurrences(of: "T", with: " ")
                 guard let date = Self.timestamp.date(from: String(time.prefix(19))),
                       let value = Double(Net.str(record, "parmvalue")), value.isFinite else { return nil }
                 return HistorySample(time: date, value: value)
             }.sorted { $0.time < $1.time }
+            if !records.isEmpty && samples.isEmpty {
+                error = "后台返回的历史数据无法读取"
+            }
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
         }

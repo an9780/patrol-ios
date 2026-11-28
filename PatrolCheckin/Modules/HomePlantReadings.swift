@@ -80,12 +80,16 @@ struct HomePlantReadings: View {
                 "SIPAIIS_DataCenter/zone/getBizWaterDataByFile4GY.do",
                 ["unitId": unit, "ng": ""])
             try Task.checkCancellation()
-            guard let fields = Net.array(raw).first else {
+            let root = Net.dict(raw)
+            let payload = root["result"] ?? root["data"] ?? raw
+            let decoded = Net.objectRows(payload)
+            let candidate = decoded?.first ?? Net.dict(payload)
+            guard decoded?.isEmpty == true || Category.allCases.contains(where: { candidate[$0.rawValue] != nil }) else {
                 throw APIError.message("服务器未返回厂区指标配置")
             }
             var next: [Category: [Reading]] = [:]
             for category in Category.allCases {
-                let entries = Net.array(fields, key: category.rawValue)
+                let entries = Net.array(candidate, key: category.rawValue)
                 let rows: [Reading]
                 switch category {
                 case .equipment:

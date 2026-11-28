@@ -226,11 +226,10 @@ struct ProductionMonitoringScreen: View {
             guard requestNumber == request, filter == current else { return }
             let root = Net.dict(raw)
             let result = Net.dict(root["result"])
-            guard let records = result["list"] ?? result["rows"] ?? root["rows"] ?? root["result"],
-                  !(records is NSNull) else {
+            let payload = result["list"] ?? result["rows"] ?? root["rows"] ?? root["result"] ?? raw
+            guard let rows = Net.objectRows(payload) else {
                 throw APIError.message("服务未返回测点列表")
             }
-            let rows = Net.array(records)
             let sectionName = sections.first { $0.id == current.section }?.name ?? ""
             var ids = Set(points.map(\.id))
             let decoded = rows.compactMap { makeReading($0, sectionName: sectionName) }
@@ -254,7 +253,10 @@ struct ProductionMonitoringScreen: View {
             try Task.checkCancellation()
             let root = Net.dict(raw)
             let records = root["rows"] ?? Net.dict(root["result"])["rows"] ?? root["result"] ?? raw
-            sections = Net.array(records).compactMap { row in
+            guard let rows = Net.objectRows(records) else {
+                throw APIError.message("服务未返回工艺段列表")
+            }
+            sections = rows.compactMap { row in
                 let code = Net.str(row, "code")
                 let name = Net.str(row, "name")
                 guard !code.isEmpty, !name.isEmpty else { return nil }

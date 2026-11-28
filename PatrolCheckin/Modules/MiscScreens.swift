@@ -112,6 +112,7 @@ struct ChangePasswordScreen: View {
 
 struct AboutScreen: View {
     @Environment(\.presentationMode) private var presentation
+    private let revision = Bundle.main.object(forInfoDictionaryKey: "PatrolBuildRevision") as? String
 
     var body: some View {
         NavigationView {
@@ -124,6 +125,13 @@ struct AboutScreen: View {
                     HStack {
                         Text("版本"); Spacer()
                         Text("1.0").foregroundColor(C.sub)
+                    }
+                    if let revision = revision {
+                        HStack {
+                            Text("构建版本")
+                            Spacer()
+                            Text(String(revision.prefix(7))).monospacedDigit().foregroundColor(C.sub)
+                        }
                     }
                     HStack {
                         Text("服务端"); Spacer()

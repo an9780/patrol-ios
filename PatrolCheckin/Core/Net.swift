@@ -179,12 +179,16 @@ final class Net {
         } else {
             value = any
         }
+        return objectRows(value) ?? []
+    }
+
+    static func objectRows(_ value: Any?) -> [[String: Any]]? {
         if let rows = value as? [[String: Any]] { return rows }
         if let string = value as? String,
            let decoded = try? JSONSerialization.jsonObject(with: Data(string.utf8)) {
-            return (decoded as? [[String: Any]]) ?? []
+            return decoded as? [[String: Any]]
         }
-        return []
+        return nil
     }
     static func str(_ d: [String: Any], _ k: String) -> String {
         if d[k] is NSNull { return "" }

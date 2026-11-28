@@ -15,6 +15,8 @@ xcodebuild -project PatrolCheckin.xcodeproj -scheme PatrolCheckin \
   CODE_SIGN_IDENTITY="" build
 app="$stage/products/Build/Products/Release-iphoneos/PatrolCheckin.app"
 info="$app/Info.plist"
+revision="$(git rev-parse HEAD)"
+plutil -insert PatrolBuildRevision -string "$revision" "$info"
 plutil -lint "$info"
 test "$(plutil -extract CFBundleIdentifier raw "$info")" = "com.patrol.checkin"
 test "$(plutil -extract DTPlatformName raw "$info")" = "iphoneos"
@@ -28,5 +30,5 @@ unzip -tq "$stage/current.ipa"
 cp "$stage/current.ipa" "$out/PatrolCheckin-unsigned.ipa"
 ditto -c -k --keepParent PatrolCheckin.xcodeproj "$out/XcodeProject.zip"
 (cd "$out" && shasum -a 256 PatrolCheckin-unsigned.ipa > SHA256.txt)
-git rev-parse HEAD > "$out/commit.txt"
+printf '%s\n' "$revision" > "$out/commit.txt"
 
