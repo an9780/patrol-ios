@@ -1,6 +1,7 @@
 import SwiftUI
 
 // MARK: - 设备卡（照 activity_equ_card.xml + fragment_equ_detail.xml 还原）
+// 页签取自 EquCardActivity 构造函数：设备详情 / 维修记录 / 测量点
 
 struct EquipmentCardScreen: View {
     @EnvironmentObject var app: AppState
@@ -9,10 +10,13 @@ struct EquipmentCardScreen: View {
 
     @StateObject private var store = DetailStore()
     @State private var tab = 0
+    @State private var records: [[String: Any]] = []
+    @State private var points: [[String: Any]] = []
+    @State private var loadingOthers = false
 
     private let gray08 = Color(hex: 0x646363)
     private let grayT = Color(hex: 0xE5E5E5)
-    private let tabs = ["设备信息"]
+    private let tabs = ["设备详情", "维修记录", "测量点"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,25 +49,13 @@ struct EquipmentCardScreen: View {
 
             ScrollView {
                 VStack(spacing: 0) {
-                    if store.fields.isEmpty {
-                        ProgressView().padding(.vertical, 40)
-                    } else {
-                        ForEach(Array(store.fields.prefix(12).enumerated()), id: \.offset) { _, f in
-                            HStack(spacing: 0) {
-                                Text(f.label)
-                                    .font(.system(size: 15)).foregroundColor(.black)
-                                    .frame(height: 40, alignment: .center)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text(f.value)
-                                    .font(.system(size: 15)).foregroundColor(gray08)
-                                    .frame(height: 40, alignment: .center)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .layoutPriority(3)
-                            }
-                            .padding(.horizontal, 10)
-                            .background(Color.white)
-                            Rectangle().fill(grayT).frame(height: 0.3)
-                        }
+                    switch tab {
+                    case 0:
+                        detailTab
+                    case 1:
+                        recordTab
+                    default:
+                        pointTab
                     }
                     Spacer(minLength: 20)
                 }
@@ -76,6 +68,101 @@ struct EquipmentCardScreen: View {
             await store.load(
                 path: "SIPAIIS_Equipment/equipment/getEquipmentById.do",
                 params: ["id": equipmentId, "unitId": app.unit])
+            await loadOthers()
         }
+    }
+
+    // 设备详情：15sp 标签 : 15sp 值，40dp 行，0.3dp 分隔线
+    private var detailTab: some View {
+        Group {
+            if store.fields.isEmpty {
+                ProgressView().padding(.vertical, 40)
+            } else {
+                ForEach(Array(store.fields.prefix(14).enumerated()), id: \.offset) { _, f in
+                    HStack(spacing: 0) {
+                        Text(f.label)
+                            .font(.system(size: 15)).foregroundColor(.black)
+                            .frame(height: 40, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(f.value)
+                            .font(.system(size: 15)).foregroundColor(gray08)
+                            .frame(height: 40, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .layoutPriority(3)
+                    }
+                    .padding(.horizontal, 10)
+                    .background(Color.white)
+                    Rectangle().fill(grayT).frame(height: 0.3)
+                }
+            }
+        }
+    }
+
+    // 维修记录
+    private var recordTab: some View {
+        Group {
+            if records.isEmpty {
+                Text(loadingOthers ? "加载中…" : "暂无维修记录")
+                    .font(.system(size: 14)).foregroundColor(C.grayText)
+                    .frame(maxWidth: .infinity).padding(.vertical, 40)
+            } else {
+                ForEach(Array(records.prefix(30).enumerated()), id: \.offset) { _, d in
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(Net.str(d, "problemcontent").isEmpty
+                             ? Net.str(d, "contents") : Net.str(d, "problemcontent"))
+                            .font(.system(size: 15)).foregroundColor(.black)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(Net.str(d, "insdt"))
+                            .font(.system(size: 12)).foregroundColor(C.grayText)
+                            .padding(.horizontal, 10).padding(.bottom, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .background(Color.white)
+                    .padding(.bottom, 0.3)
+                }
+            }
+        }
+    }
+
+    // 测量点
+    private var pointTab: some View {
+        Group {
+            if points.isEmpty {
+                Text(loadingOthers ? "加载中…" : "暂无测量点")
+                    .font(.system(size: 14)).foregroundColor(C.grayText)
+                    .frame(maxWidth: .infinity).padding(.vertical, 40)
+            } else {
+                ForEach(Array(points.enumerated()), id: \.offset) { _, d in
+                    MeasurePointRow(
+                        name: Net.str(d, "pointName").isEmpty ? Net.str(d, "name") : Net.str(d, "pointName"),
+                        value: Net.str(d, "value"))
+                }
+            }
+        }
+    }
+
+    private func loadOthers() async {
+        loadingOthers = true
+        if let raw = try? await Net.shared.post(
+            "SIPAIIS_Equipment/maintenance/getListMaintenance.do",
+            ["page": "1", "rows": "50", "sort": "insdt", "order": "desc",
+             "companyid": app.unit, "begin_time": "", "end_time": "", "status": ""]) {
+            if let d = raw as? [String: Any],
+               let a = d["rows"] as? [[String: Any]] {
+                records = a.filter {
+                    let eid = Net.str($0, "equipmentId")
+                    return eid.isEmpty || eid == equipmentId
+                }
+            }
+        }
+        if let raw = try? await Net.shared.post(
+            "SIPAIIS_DataCenter/work/processSection/getEquPointByEquId.do",
+            ["equipmentId": equipmentId]) {
+            if let a = raw as? [[String: Any]] { points = a }
+            else if let d = raw as? [String: Any],
+                    let a = d["rows"] as? [[String: Any]] { points = a }
+        }
+        loadingOthers = false
     }
 }
