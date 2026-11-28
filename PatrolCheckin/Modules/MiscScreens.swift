@@ -323,74 +323,195 @@ struct KnowledgeDocScreen: View {
 
 struct EquipmentSearchScreen: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var keyword = ""
-    @State private var rows: [GenericRow] = []
+    @State private var equipmentClass = ""
+    @State private var classes: [FormOption] = []
+    @State private var rows: [[String: Any]] = []
+    @State private var page = 0
+    @State private var hasMore = false
+    @State private var activeKeyword = ""
     @State private var loading = false
     @State private var error: String?
 
+    private let pageSize = 20
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundColor(C.sub)
-                TextField("设备名称", text: $keyword)
-                    .font(.system(size: 15))
-                    .onSubmit { Task { await search() } }
-                if !keyword.isEmpty {
-                    Button {
-                        keyword = ""; Task { await search() }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundColor(C.sub)
-                    }
+            HStack(spacing: 12) {
+                Button { dismiss() } label: {
+                    Image(systemName: "arrow.left").foregroundColor(.white)
                 }
+                .accessibilityLabel("返回")
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundColor(C.sub)
+                    TextField("点击输入名称搜索", text: $keyword)
+                        .submitLabel(.search)
+                        .onSubmit { Task { await search() } }
+                }
+                .padding(8).background(Color.white).clipShape(Capsule())
+                Button("搜索") { Task { await search() } }
+                    .foregroundColor(.white).disabled(loading)
             }
-            .padding(10).background(Color.white).cornerRadius(8)
-            .padding(12)
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(C.bar)
+            Menu {
+                Button("全部") { selectClass("") }
+                ForEach(classes) { item in
+                    Button(item.name) { selectClass(item.id) }
+                }
+            } label: {
+                HStack {
+                    Text(classes.first { $0.id == equipmentClass }?.name ?? "全部")
+                    Spacer()
+                    Image(systemName: "chevron.down").foregroundColor(C.sub)
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 38)
+                .background(Color.white)
+            }
+            .disabled(loading)
+            .padding(8)
 
-            if loading {
-                ProgressView().padding(.top, 50); Spacer()
-            } else if rows.isEmpty {
-                EmptyHint(text: error ?? "输入设备名搜索")
-            } else {
-                LoadableList(items: rows, empty: "无结果") { r in
-                    NavigationLink {
-                        EquipmentCardScreen(equipmentId: r.id, equipmentName: r.title)
-                            .environmentObject(app)
-                    } label: {
-                        SimpleTextRow(text: r.title)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        let name = Net.str(row, "equipmentname")
                         NavigationLink {
-                            PatrolEquDetailScreen(equipmentId: r.id, equipmentName: r.title)
-                                .environmentObject(app)
-                        } label: { Text("设备巡检卡") }
+                            EquipmentCardScreen(equipmentId: Net.str(row, "id"), equipmentName: name)
+                        } label: {
+                            equipmentRow(row, name: name)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if loading { ProgressView().padding() }
+                    if let error = error {
+                        Text(error).foregroundColor(C.sub).padding(8)
+                        Button("重试") { Task { await search() } }
+                    } else if rows.isEmpty && !loading {
+                        EmptyHint(text: "暂无设备")
+                    }
+                    if hasMore && !loading {
+                        Button("加载更多") { Task { await search(nextPage: true) } }
+                            .padding(8)
                     }
                 }
+                .padding(.horizontal, 7)
             }
+            .refreshable { await search() }
         }
         .background(C.bg)
-        .navigationTitle("设备查询")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .task(id: app.unit) {
+            async let list: Void = search()
+            async let filters: Void = loadClasses()
+            _ = await (list, filters)
+        }
     }
 
-    private func search() async {
+    private func selectClass(_ id: String) {
+        equipmentClass = id
+        Task { await search() }
+    }
+
+    private func equipmentRow(_ row: [String: Any], name: String) -> some View {
+        let level = Net.str(Net.dict(row["equipmentLevel"]), "levelname")
+        let configuredType = Net.str(Net.dict(row["equipmentTypeNumber"]), "name")
+        let type = configuredType.isEmpty ? Net.str(Net.dict(row["equipmentClass"]), "name") : configuredType
+        let section = Net.str(Net.dict(row["processSection"]), "name")
+        let statuses = ["0": "停用", "1": "在用", "2": "封存", "3": "报废待处理"]
+        let status = statuses[Net.str(row, "equipmentstatus")] ?? "未知"
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(name).font(.system(size: 17))
+                Spacer(minLength: 6)
+                if !level.isEmpty { badge(level, color: .red) }
+                badge(status, color: status == "在用" ? .green : .gray)
+            }
+            .padding(12)
+            Divider()
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
+                    equipmentField("设备编号", Net.str(row, "equipmentcardid"))
+                    equipmentField("工艺位置", section)
+                    equipmentField("制造厂家", Net.str(row, "equipmentmanufacturer"), fallback: "厂商暂未录入")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 10) {
+                    equipmentField("设备类型", type)
+                    equipmentField("规格型号", Net.str(row, "equipmentmodelname"))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+        }
+        .foregroundColor(.black)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+    }
+
+    private func badge(_ name: String, color: Color) -> some View {
+        Text(name)
+            .font(.system(size: 13))
+            .foregroundColor(color)
+            .padding(.horizontal, 7).padding(.vertical, 4)
+            .background(color.opacity(0.16)).cornerRadius(4)
+    }
+
+    private func equipmentField(_ label: String, _ value: String, fallback: String = "暂未配置") -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(.system(size: 13)).foregroundColor(C.sub)
+            Text(value.isEmpty || value == "null" ? fallback : value)
+                .font(.system(size: 14))
+        }
+    }
+
+    private func loadClasses() async {
+        do {
+            let data = try await Net.shared.get(
+                "SIPAIIS_Equipment/equipment/equipmentClass/getEquipmentClassTree.do", [:])
+            classes = FormOption.treeOptions(from: data, users: false)
+        } catch {
+            classes = []
+        }
+    }
+
+    private func search(nextPage: Bool = false) async {
+        guard !loading else { return }
+        let requestedPage = nextPage ? page + 1 : 1
+        let query = nextPage ? activeKeyword : keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         loading = true
         error = nil
+        defer { loading = false }
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_Equipment/equipment/getList.do",
-                ["unitId": app.unit, "search_name": keyword, "page": "1", "rows": "100",
-                 "pSectionId": "", "equipmentCardClass": "", "sort": "insdt", "order": "desc"])
-            var arr: [[String: Any]] = []
-            if let d = raw as? [String: Any] {
-                if let a = d["rows"] as? [[String: Any]] { arr = a }
-                else if let sub = d["result"] as? [String: Any],
-                        let a = sub["rows"] as? [[String: Any]] { arr = a }
+                ["unitId": app.unit, "search_name": query, "page": String(requestedPage),
+                 "rows": String(pageSize), "pSectionId": "", "equipmentCardClass": equipmentClass,
+                 "sort": "insdt", "order": "desc"])
+            try Task.checkCancellation()
+            let root = Net.dict(raw)
+            let result = Net.dict(root["result"])
+            guard let records = root["rows"] ?? result["rows"], !(records is NSNull) else {
+                throw APIError.message(Net.message(raw))
             }
-            rows = arr.enumerated().map { GenericRow.from($0.element, index: $0.offset) }
+            let received = Net.array(records)
+            var current = nextPage ? rows : []
+            var ids = Set(current.map { Net.str($0, "id") })
+            current.append(contentsOf: received.filter {
+                let id = Net.str($0, "id")
+                return !id.isEmpty && ids.insert(id).inserted
+            })
+            rows = current
+            page = requestedPage
+            activeKeyword = query
+            let total = max(Net.int(root, "total"), Net.int(result, "total"))
+            hasMore = !received.isEmpty && (total > 0 ? page * pageSize < total : received.count == pageSize)
         } catch {
-            self.error = error.localizedDescription
+            if !Task.isCancelled { self.error = error.localizedDescription }
         }
-        loading = false
     }
 }

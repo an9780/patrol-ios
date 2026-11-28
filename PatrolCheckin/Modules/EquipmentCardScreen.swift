@@ -5,6 +5,7 @@ import SwiftUI
 
 struct EquipmentCardScreen: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
     let equipmentId: String
     let equipmentName: String
 
@@ -21,12 +22,7 @@ struct EquipmentCardScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                LinearGradient(colors: [C.gradStart, C.gradEnd],
-                               startPoint: .leading, endPoint: .trailing)
-                Text("设备卡").font(.system(size: 15)).foregroundColor(.white)
-            }
-            .frame(height: 50)
+            BlueHeader(title: "设备卡", back: { dismiss() })
 
             // NavigationTabStrip 40dp
             HStack(spacing: 0) {

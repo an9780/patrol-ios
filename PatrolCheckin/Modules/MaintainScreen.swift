@@ -7,33 +7,37 @@ final class MaintainStore: ObservableObject {
     @Published var rows: [GenericRow] = []
     @Published var loading = false
     @Published var error: String?
+    private var requestNumber = 0
 
     func load(unit: String, start: Date, end: Date, status: String) async {
-        guard !loading else { return }
-        guard start <= end else { error = "开始日期应早于结束日期"; return }
+        requestNumber += 1
+        let request = requestNumber
+        guard start <= end else {
+            error = "开始日期应早于结束日期"
+            loading = false
+            return
+        }
         let format = DateFormatter()
         format.locale = Locale(identifier: "en_US_POSIX")
+        format.timeZone = TimeZone(identifier: "Asia/Shanghai")
         format.dateFormat = "yyyy-MM-dd"
         loading = true
         error = nil
+        defer { if requestNumber == request { loading = false } }
         do {
-            let raw = try await Net.shared.post(
-                "SIPAIIS_Equipment/maintenance/getListMaintenance.do",
-                ["page": "1", "rows": "20", "sort": "insdt", "order": "desc",
-                 "companyid": unit, "begin_time": format.string(from: start), "end_time": format.string(from: end), "status": status])
-            var arr: [[String: Any]] = []
-            if let d = raw as? [String: Any] {
-                if let a = d["rows"] as? [[String: Any]] { arr = a }
-                else if let r = d["result"] as? [String: Any],
-                        let a = r["rows"] as? [[String: Any]] { arr = a }
-            } else if let a = raw as? [[String: Any]] {
-                arr = a
-            }
-            rows = arr.enumerated().map { GenericRow.from($0.element, index: $0.offset) }
+            var fields = ["page": "1", "rows": "20", "sort": "insdt", "order": "desc",
+                          "companyid": unit, "begin_time": format.string(from: start),
+                          "end_time": format.string(from: end)]
+            if !status.isEmpty { fields["status"] = status }
+            let raw = try await Net.shared.get("SIPAIIS_Equipment/maintenance/getListMaintenance.do", fields)
+            try Task.checkCancellation()
+            guard requestNumber == request else { return }
+            let root = Net.dict(raw)
+            let records = root["rows"] ?? Net.dict(root["result"])["rows"] ?? raw
+            rows = Net.array(records).enumerated().map { GenericRow.from($0.element, index: $0.offset) }
         } catch {
-            self.error = error.localizedDescription
+            if requestNumber == request && !Task.isCancelled { self.error = error.localizedDescription }
         }
-        loading = false
     }
 }
 
@@ -74,7 +78,6 @@ struct MaintainScreen: View {
                         Text(statusText(value)).tag(value)
                     }
                 }.pickerStyle(.menu)
-                Button("查询") { Task { await reload() } }.disabled(store.loading)
                 if let error = store.error, !store.rows.isEmpty {
                     Text(error).font(.footnote).foregroundColor(.red)
                 }
@@ -97,11 +100,14 @@ struct MaintainScreen: View {
                             }
                         }
                     }
+                    .refreshable { await reload() }
                 }
             }
             .background(C.bg)
             .navigationBarHidden(true)
-            .task { await reload() }
+            .task(id: "\(app.unit)|\(start.timeIntervalSince1970)|\(end.timeIntervalSince1970)|\(status)") {
+                await reload()
+            }
         }
         .navigationViewStyle(.stack)
     }
@@ -129,7 +135,7 @@ struct MaintainScreen: View {
 
     private func statusText(_ s: String) -> String {
         switch s {
-        case "1": return "待处理"
+        case "1": return "已开始"
         case "2": return "处理中"
         case "3": return "已完成"
         default:  return s
