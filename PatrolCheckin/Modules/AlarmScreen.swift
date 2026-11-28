@@ -139,9 +139,10 @@ struct AlarmScreen: View {
                         .padding(.leading, 8).padding(.trailing, 8)
                         .padding(.top, 8).padding(.bottom, 3)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(Net.str(d, "status"))
+                    let state = Net.str(d, "status")
+                    Text(["0": "报警", "1": "确认", "2": "恢复"][state] ?? state)
                         .font(.system(size: 13))
-                        .foregroundColor(C.grayText)
+                        .foregroundColor(state == "0" ? Color(hex: 0xE0796C) : C.blue)
                         .padding(.leading, 8).padding(.trailing, 8)
                         .padding(.top, 8).padding(.bottom, 3)
                 }

@@ -57,7 +57,6 @@ final class HomeStore: ObservableObject {
 struct HomeScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = HomeStore()
-    @State private var showVideo = false
     @State private var showPatrol = false
     @State private var showOffline = false
     @State private var showAlarm = false
@@ -156,12 +155,11 @@ struct HomeScreen: View {
                 .frame(height: 60)
                 .padding(.top, 10).padding(.bottom, 10)
 
-                // ── 第二行模块（60dp，4 个可见）──
+                // ── 第二行模块 ──
                 HStack(spacing: 0) {
                     module("历史报警", "moudle_fg_main_alarm") { showAlarm = true }
                     module("保养工单", "moudle_fg_main_com_adj") { showMaintain = true }
                     module("离线巡检", "moudle_fg_main_file") { showOffline = true }
-                    module("视频监控", "moudle_fg_main_video") { showVideo = true }
                 }
                 .frame(height: 60)
                 .padding(.bottom, 10)
@@ -172,7 +170,6 @@ struct HomeScreen: View {
         .background(C.bg)
         .navigationBarHidden(true)
         .sheet(isPresented: $showPatrol) { PatrolScreen().environmentObject(app) }
-        .sheet(isPresented: $showVideo) { NavigationView { VideoCatalogScreen() }.environmentObject(app) }
         .sheet(isPresented: $showOffline) { NavigationView { OfflinePatrolScreen() }.environmentObject(app) }
         .sheet(isPresented: $showReport) { FaultReportScreen().environmentObject(app) }
         .sheet(isPresented: $showAlarm) { AlarmScreen().environmentObject(app) }

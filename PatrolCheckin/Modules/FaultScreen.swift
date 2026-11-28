@@ -198,18 +198,7 @@ struct FaultScreen: View {
             }
             .sheet(isPresented: $showHistory) {
                 NavigationView {
-                    GenericListScreen(
-                        title: "历史记录",
-                        path: "SIPAIIS_Equipment/maintenance/getMDetailList.do",
-                        buildParams: { ["unitId": app.unit, "page": "1", "rows": "50", "type": "3"] }
-                    )
-                    .environmentObject(app)
-                    .navigationTitle("历史记录")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("关闭") { showHistory = false }
-                        }
-                    }
+                    HistoryListScreen().environmentObject(app)
                 }
             }
             .task { await reload() }

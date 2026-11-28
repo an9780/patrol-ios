@@ -49,7 +49,7 @@ final class AppState: ObservableObject {
     @Published var date: String
     @Published var busy = false
     @Published var toast: String?
-    @Published var tab: Int = 2          // 默认「生产监视」
+    @Published var tab = 0
 
     init() {
         let d = UserDefaults.standard

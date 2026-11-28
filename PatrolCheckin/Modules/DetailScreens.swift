@@ -818,6 +818,7 @@ struct ScheduleDetailScreen: View {
 
 struct HistoryDetailScreen: View {
     let recordId: String
+    var abnormal = false
     @StateObject private var store = DetailStore()
 
     var body: some View {
@@ -838,8 +839,9 @@ struct HistoryDetailScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await store.load(
-                path: "SIPAIIS_Equipment/maintenance/showMaintenanceDetailView.do",
-                params: ["id": recordId])
+                path: abnormal ? "SIPAIIS_Equipment/maintenance/getMaintenanceDetailsByAbnormal.do"
+                    : "SIPAIIS_Equipment/maintenance/showMaintenanceDetailView.do",
+                params: [abnormal ? "abnormalId" : "id": recordId])
         }
     }
 }

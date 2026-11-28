@@ -146,6 +146,7 @@ final class PatrolStore: ObservableObject {
 
 struct PatrolScreen: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var store: PatrolStore
     init(demonstration: Bool = false) {
         _store = StateObject(wrappedValue: PatrolStore(demonstration: demonstration))
@@ -174,6 +175,16 @@ struct PatrolScreen: View {
                            Image(systemName: "arrow.clockwise")
                                .font(.system(size: 15)).foregroundColor(.white)
                        }))
+                .overlay(alignment: .leading) {
+                    if !store.demonstration {
+                        Button { dismiss() } label: {
+                            Image(systemName: "arrow.left")
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("返回主页")
+                    }
+                }
 
             // 日常 / 临时 页签 + 3dp 指示条
             VStack(spacing: 0) {
