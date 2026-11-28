@@ -365,6 +365,7 @@ struct BlueHeader: View {
     let title: String
     var subtitle: String? = nil
     var trailing: AnyView? = nil
+    var back: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -372,6 +373,12 @@ struct BlueHeader: View {
             Text(title)
                 .font(.system(size: 15)).foregroundColor(.white)
             HStack {
+                if let back = back {
+                    Button(action: back) {
+                        Image(systemName: "arrow.left").foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                    }.accessibilityLabel("返回")
+                }
                 Spacer()
                 if let t = trailing { t }
             }
@@ -399,8 +406,8 @@ struct EmptyHint: View {
     let text: String
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "tray").font(.largeTitle).foregroundColor(C.grayText)
-            Text(text).font(.subheadline).foregroundColor(C.grayText)
+            Image("blankpage_ico_default").resizable().scaledToFit().frame(width: 80, height: 80)
+            Text(text).font(.system(size: 18)).foregroundColor(C.blue)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 60)
     }

@@ -175,7 +175,7 @@ struct HomeScreen: View {
             NavigationView { EquipmentSearchScreen().environmentObject(app) }
         }
         .sheet(isPresented: $showDispatch) {
-            DispatchScreen().environmentObject(app)
+            NavigationView { ScheduleListScreen().environmentObject(app) }
         }
         .task { await store.load(unit: app.unit, date: app.date) }
     }

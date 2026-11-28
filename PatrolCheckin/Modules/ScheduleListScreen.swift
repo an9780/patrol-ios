@@ -14,7 +14,7 @@ final class ScheduleListStore: ObservableObject {
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_DataCenter/work/processAdjustment/getlist.do",
-                ["unitId": unit, "page": "1", "rows": "50",
+                ["targetCompanyId": unit, "page": "1", "rows": "50",
                  "sort": "insdt", "order": "desc", "searchName": keyword])
             var arr: [[String: Any]] = []
             if let d = raw as? [String: Any] {
@@ -34,17 +34,14 @@ struct ScheduleListScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = ScheduleListStore()
     @State private var keyword = ""
-    @State private var showAudit = false
-    @State private var auditId = ""
+    @Environment(\.dismiss) private var dismiss
+    @State private var creating = false
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                LinearGradient(colors: [C.gradStart, C.gradEnd],
-                               startPoint: .leading, endPoint: .trailing)
-                Text("排班管理").font(.system(size: 15)).foregroundColor(.white)
-            }
-            .frame(height: 50)
+            BlueHeader(title: "调度单", trailing: AnyView(
+                Button("新增") { creating = true }.foregroundColor(.white)
+            ), back: { dismiss() })
 
             // 搜索框 36dp（bg_white_all 圆角 6）
             ZStack(alignment: .leading) {
@@ -66,7 +63,7 @@ struct ScheduleListScreen: View {
             if store.loading && store.rows.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if store.rows.isEmpty {
-                EmptyHint(text: store.error ?? "暂无排班")
+                EmptyHint(text: store.error ?? "暂无工单")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -79,16 +76,7 @@ struct ScheduleListScreen: View {
                                 card(d)
                             }
                             .buttonStyle(.plain)
-                            .contextMenu {
-                                Button("审核") {
-                                    auditId = Net.str(d, "id")
-                                    showAudit = true
-                                }
-                                Button("查看详情") {
-                                    auditId = Net.str(d, "id")
-                                    showAudit = true
-                                }
-                            }
+
                         }
                     }
                 }
@@ -96,13 +84,13 @@ struct ScheduleListScreen: View {
             }
         }
         .navigationBarHidden(true)
-        .sheet(isPresented: $showAudit) {
-            NavigationView {
-                ScheduleAuditScreen(taskId: auditId, businessId: auditId)
-                    .environmentObject(app)
-            }
+        .sheet(isPresented: $creating, onDismiss: {
+            Task { await store.load(unit: app.unit, keyword: keyword) }
+        }) {
+            ScheduleCreateScreen().environmentObject(app)
         }
-        .task { await store.load(unit: app.unit, keyword: "") }
+        .task { await store.load(unit: app.unit, keyword: keyword) }
+
     }
 
     /// item_schedule_sheet.xml
@@ -113,26 +101,29 @@ struct ScheduleListScreen: View {
                     .resizable().scaledToFit()
                     .padding(.leading, 10).padding(.vertical, 6)
                     .frame(width: 28, height: 28)
-                Text(Net.str(d, "typeName").isEmpty ? "排班" : Net.str(d, "typeName"))
+                Text([Net.str(d, "typeName"), Net.str(d, "adjustmentLevel").isEmpty ? "" : Net.str(d, "adjustmentLevel") + "级"].filter { !$0.isEmpty }.joined(separator: " | "))
                     .font(.system(size: 14)).foregroundColor(.black)
                     .padding(.leading, 8).padding(.trailing, 8)
                     .padding(.vertical, 5)
                     .frame(height: 30, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(Net.str(d, "status"))
+                Text(Net.str(d, "taskName").isEmpty ? Net.str(d, "status") : Net.str(d, "taskName"))
                     .font(.system(size: 14)).foregroundColor(.black)
                     .padding(.leading, 10).padding(.trailing, 8).padding(.vertical, 5)
             }
-            Text(Net.str(Net.dict(d["targetCompany"]), "sname"))
+            Text("调度厂区： " + Net.str(Net.dict(d["targetCompany"]), "sname"))
                 .font(.system(size: 14)).foregroundColor(.black)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text(Net.str(d, "contents"))
+            Text("工单内容： " + Net.str(d, "contents"))
                 .font(.system(size: 16)).foregroundColor(.black)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(Net.str(d, "insdt"))
+            Text(Net.str(d, "targetuserName"))
+                .font(.system(size: 14)).foregroundColor(.black)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+            Text("发起时间： " + String(Net.str(d, "insdt").prefix(10)))
                 .font(.system(size: 14)).foregroundColor(.black)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)

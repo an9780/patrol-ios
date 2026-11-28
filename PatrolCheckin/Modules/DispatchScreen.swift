@@ -301,169 +301,65 @@ final class DispatchStore: ObservableObject {
 struct DispatchScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = DispatchStore()
-    @State private var lastRefresh = ""
-    @State private var autoRefresh = true
+    let keyword: String
 
-    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    private var visibleOrders: [DispatchOrder] {
+        let query = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        return store.orders.filter { order in
+            query.isEmpty || [order.statusText, order.contents, order.company].contains {
+                $0.localizedCaseInsensitiveContains(query)
+            }
+        }
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            BlueHeader(title: "调度单",
-                       subtitle: "\(app.caption) · \(app.unit)",
-                       trailing: AnyView(Button {
-                           Task { await reload() }
-                       } label: {
-                           Image(systemName: "arrow.clockwise").foregroundColor(.white)
-                       }))
-
-            // 待办提示条
-            if !store.mine.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "bell.badge.fill")
-                        .font(.system(size: 13))
-                    Text("有 \(store.mine.count) 条调度单待你拍照完成")
-                        .font(.system(size: 13, weight: .medium))
-                    Spacer()
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(Color(red: 0.85, green: 0.47, blue: 0.02))
-            }
-
+        ScrollView {
             if store.loading && store.orders.isEmpty {
-                ProgressView().padding(.top, 60); Spacer()
-            } else if store.orders.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "tray.circle").font(.system(size: 56))
-                        .foregroundColor(C.blue.opacity(0.22))
-                    Text("暂无工单").font(.system(size: 15))
-                        .foregroundColor(C.blue.opacity(0.6))
-                    if let e = store.listError {
-                        Text(e).font(.caption).foregroundColor(.red)
-                            .multilineTextAlignment(.center).padding(.horizontal, 30)
-                    }
-                    Button("刷新") { Task { await reload() } }
-                        .font(.system(size: 13)).padding(.top, 6)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(C.bg)
+                ProgressView().frame(maxWidth: .infinity).padding(.top, 50)
+            } else if visibleOrders.isEmpty {
+                EmptyHint(text: store.listError ?? "暂无工单")
+                    .frame(maxWidth: .infinity, minHeight: 360)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        if !store.mine.isEmpty {
-                            Text("待我处理（\(store.mine.count)）")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(C.blue)
-                                .padding(.horizontal, 4)
-                            ForEach(store.mine) { o in card(o, highlight: true) }
+                LazyVStack(spacing: 6) {
+                    ForEach(visibleOrders) { order in
+                        NavigationLink {
+                            DispatchDetailScreen(orderId: order.id, previewContents: order.contents)
+                        } label: {
+                            card(order)
                         }
-                        if !store.others.isEmpty {
-                            Text("全部调度单（\(store.others.count)）")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(C.sub)
-                                .padding(.horizontal, 4).padding(.top, 6)
-                            ForEach(store.others) { o in card(o, highlight: false) }
-                        }
-                        HStack {
-                            Text(lastRefresh.isEmpty ? "" : "上次刷新 \(lastRefresh)")
-                                .font(.system(size: 10)).foregroundColor(C.sub)
-                            Spacer()
-                            Button("刷新") { Task { await reload() } }
-                                .font(.system(size: 11)).foregroundColor(C.blue)
-                        }
-                        .padding(.horizontal, 4).padding(.top, 4)
+                        .buttonStyle(.plain)
                     }
-                    .padding(12)
                 }
-                .background(C.bg)
+                .padding(12)
             }
         }
-        .navigationBarHidden(true)
-        .task { await reload() }
-        .onReceive(timer) { _ in
-            guard autoRefresh else { return }
-            Task { await reload() }
-        }
+        .background(C.bg)
+        .task(id: app.unit) { await store.loadList(unit: app.unit) }
+        .refreshable { await store.loadList(unit: app.unit) }
     }
 
-    private func reload() async {
-        await store.loadList(unit: app.unit)
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
-        lastRefresh = f.string(from: Date())
-    }
-
-    /// 严格照 item_schedule_sheet.xml
-    /// 外层：左右 5、上下 3；内层：白底圆角 5、蓝色 0.5 描边、padding 5
-    private func card(_ o: DispatchOrder, highlight: Bool) -> some View {
-        NavigationLink {
-            DispatchDetailScreen(orderId: o.id, previewContents: o.contents)
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                // 第一行：流程图标 28×28 + 类型 + 状态
-                HStack(spacing: 0) {
-                    Image("moudle_flow")
-                        .resizable().scaledToFit()
-                        .padding(.leading, 10)
-                        .padding(.vertical, 6)
-                        .frame(width: 28, height: 28)
-
-                    Text(o.typeName.isEmpty ? "调度单" : o.typeName)
-                        .font(.system(size: 14))
-                        .foregroundColor(.black)
-                        .padding(.leading, 8).padding(.trailing, 8)
-                        .padding(.vertical, 5)
-                        .frame(height: 30, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Text(o.statusText)
-                        .font(.system(size: 14))
-                        .foregroundColor(.black)
-                        .padding(.leading, 10).padding(.trailing, 8)
-                        .padding(.vertical, 5)
-                }
-
-                // 第二行：目标公司 14sp
-                Text(o.company)
-                    .font(.system(size: 14)).foregroundColor(.black)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                // 第三行：调度内容 16sp
-                Text(o.contents)
-                    .font(.system(size: 16)).foregroundColor(.black)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                // 第四行：目标人 14sp
-                Text(o.manText)
-                    .font(.system(size: 14)).foregroundColor(.black)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                // 第五行：日期 14sp
-                Text(o.dateText)
-                    .font(.system(size: 14)).foregroundColor(.black)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    private func card(_ order: DispatchOrder) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image("moudle_flow").resizable().scaledToFit().frame(width: 18, height: 18)
+                Text(order.statusText).font(.system(size: 15))
             }
-            .padding(5)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.white)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(Color(hex: 0x2E59F7), lineWidth: 0.5)
-            )
-            .padding(.horizontal, 5)
-            .padding(.vertical, 3)
+            Text(order.contents).font(.system(size: 16))
+            HStack {
+                Text(order.insdt).foregroundColor(C.grayText)
+                Spacer()
+                Text(order.company).foregroundColor(C.bar)
+            }
+            .font(.system(size: 14))
         }
-        .buttonStyle(.plain)
+        .foregroundColor(.black)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(C.bar, lineWidth: 0.5))
     }
 }
-
-// MARK: - 调度单详情（拍照 → 上传 → 完成）
 
 struct DispatchDetailScreen: View {
     @State private var showAudit = false

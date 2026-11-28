@@ -160,19 +160,14 @@ struct FaultScreen: View {
 
                 // ── 列表区：左右 9，上 8 ──
                 if tab == .dispatch {
-                    DispatchScreen().environmentObject(app)
+                    DispatchScreen(keyword: search).environmentObject(app)
                 } else if store.loading && store.rows.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(C.bg)
                 } else if store.rows.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "tray").font(.largeTitle)
-                            .foregroundColor(C.grayText.opacity(0.6))
-                        Text(store.error ?? "暂无工单")
-                            .font(.system(size: 14)).foregroundColor(C.grayText)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(C.bg)
+                    EmptyHint(text: store.error ?? "暂无工单")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(C.bg)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {

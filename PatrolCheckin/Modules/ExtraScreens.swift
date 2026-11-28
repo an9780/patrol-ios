@@ -336,199 +336,205 @@ struct MaintainFillScreen: View {
 
 struct ScheduleCreateScreen: View {
     @EnvironmentObject var app: AppState
-    @State private var typeIndex = 0
-    @State private var levelIndex = 0
-    @State private var start = Date()
-    @State private var end = Date()
+    @Environment(\.dismiss) private var dismiss
+    @State private var plants: [FormOption] = []
+    @State private var reviewers: [FormOption] = []
+    @State private var types: [FormOption] = []
+    @State private var plant = ""
+    @State private var reviewer = ""
+    @State private var type = ""
+    @State private var level = "1"
+    @State private var start: Date?
+    @State private var end: Date?
     @State private var content = ""
-    @State private var receiver = ""
+    @State private var loadingOptions = true
     @State private var busy = false
-    @State private var msg: String?
-    @Environment(\.presentationMode) private var presentation
-
-    private let types = ["其他调度", "生产调度", "设备调度", "安全调度"]
-    private let levels = ["一级", "二级", "三级"]
+    @State private var message: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                LinearGradient(colors: [C.gradStart, C.gradEnd],
-                               startPoint: .leading, endPoint: .trailing)
-                Text("新建调度").font(.system(size: 15)).foregroundColor(.white)
-            }
-            .frame(height: 50)
-
+            BlueHeader(title: "调度单申请", back: { if !busy { dismiss() } })
             ScrollView {
-                VStack(spacing: 0) {
-                    // 调度厂区
-                    HStack(spacing: 0) {
-                        Text("调度厂区：")
-                            .font(.system(size: 15)).foregroundColor(.black)
-                            .frame(height: 40, alignment: .center)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(app.unit)
-                            .font(.system(size: 15)).foregroundColor(Color(hex: 0x646363))
-                            .frame(height: 40, alignment: .center)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .layoutPriority(2.5)
-                        Image("arrow_right")
-                            .resizable().scaledToFit()
-                            .padding(9).frame(width: 40, height: 40)
-                            .layoutPriority(0.5)
-                    }
-                    .frame(height: 40)
-                    .padding(.horizontal, 10)
-                    .background(Color.white)
-
-                    // 类型 / 等级
+                VStack(spacing: 8) {
+                    optionsRow("调度厂区", options: plants, selection: $plant)
+                        .background(Color.white)
                     VStack(spacing: 0) {
-                        pickerRow("调度类型：", types, $typeIndex)
-                        thin
-                        pickerRow("调度等级：", levels, $levelIndex)
-                        thin
-                        dateRow("开始日期：", $start)
-                        thin
-                        dateRow("结束日期：", $end)
-                        thin
-                        HStack(spacing: 0) {
-                            Text("接收人员：")
-                                .font(.system(size: 15)).foregroundColor(.black)
-                                .frame(height: 40, alignment: .center)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Text(receiver.isEmpty ? "点击选择" : receiver)
-                                .font(.system(size: 15)).foregroundColor(Color(hex: 0x646363))
-                                .frame(height: 40, alignment: .center)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .layoutPriority(3)
-                        }
-                        .frame(height: 40)
-                        thin
-                    }
-                    .padding(.horizontal, 10)
-                    .background(Color.white)
-                    .padding(.top, 8)
-
-                    // 调度内容
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("调度内容：")
-                            .font(.system(size: 15)).foregroundColor(.black)
-                            .frame(height: 35, alignment: .center)
-                        ZStack(alignment: .topLeading) {
-                            if content.isEmpty {
-                                Text("请填写调度内容")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(Color(hex: 0xC7C7CD))
-                                    .padding(6)
+                        optionsRow("调度类型", options: types, selection: $type)
+                        Divider()
+                        optionsRow("调度等级", options: (1...3).map {
+                            FormOption(id: String($0), name: "\($0)级")
+                        }, selection: $level)
+                        Divider()
+                        dateRow("开始日期", selection: $start)
+                        Divider()
+                        dateRow("结束日期", selection: $end)
+                        Divider()
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("调度内容：")
+                            ZStack(alignment: .topLeading) {
+                                TextEditor(text: $content)
+                                    .frame(minHeight: 92)
+                                    .accessibilityLabel("调度内容")
+                                if content.isEmpty {
+                                    Text("填写调度内容").foregroundColor(C.sub)
+                                        .padding(.leading, 5).padding(.top, 8)
+                                        .allowsHitTesting(false)
+                                }
                             }
-                            TextEditor(text: $content)
-                                .font(.system(size: 15))
-                                .padding(2)
-                                .frame(height: 110)
                         }
-                        .overlay(Rectangle().stroke(Color(hex: 0xE9E9E9), lineWidth: 1))
+                        .padding(12)
+                        Divider()
+                        optionsRow("审核人", options: reviewers, selection: $reviewer)
                     }
-                    .padding(10)
                     .background(Color.white)
-                    .padding(.top, 8)
-
                     Button {
                         Task { await submit() }
                     } label: {
-                        HStack(spacing: 8) {
-                            if busy { ProgressView().tint(.white) }
-                            Text(busy ? "提交中…" : "提 交")
-                                .font(.system(size: 19)).foregroundColor(.white)
-                        }
-                        .frame(maxWidth: .infinity).frame(height: 40)
-                        .background(C.blue).cornerRadius(3)
+                        Text(busy ? "提交中…" : "提 交")
+                            .font(.system(size: 19)).foregroundColor(.white)
+                            .frame(maxWidth: .infinity).frame(height: 42)
+                            .background(C.blue).cornerRadius(4)
                     }
-                    .padding(.horizontal, 10).padding(.top, 14)
-
-                    if let m = msg {
-                        Text(m).font(.system(size: 12)).foregroundColor(.red)
-                            .padding(.top, 8)
+                    .disabled(busy || loadingOptions)
+                    .padding(.horizontal, 12).padding(.top, 14)
+                    if loadingOptions { ProgressView() }
+                    if let message = message {
+                        Text(message).font(.footnote).foregroundColor(.red)
                     }
-
-                    Spacer(minLength: 20)
                 }
+                .font(.system(size: 15))
+                .padding(8)
             }
-            .background(Color(hex: 0xF9F9F9))
         }
+        .background(C.bg)
         .navigationBarHidden(true)
+        .interactiveDismissDisabled(busy)
+        .task { await loadOptions() }
     }
 
-    private var thin: some View {
-        Rectangle().fill(Color(hex: 0xE5E5E5)).frame(height: 0.3)
-    }
-
-    private func pickerRow(_ label: String, _ options: [String],
-                           _ index: Binding<Int>) -> some View {
-        HStack(spacing: 0) {
-            Text(label)
-                .font(.system(size: 15)).foregroundColor(.black)
-                .frame(height: 40, alignment: .center)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private func optionsRow(_ title: String, options: [FormOption], selection: Binding<String>) -> some View {
+        HStack {
+            Text(title + "：").frame(width: 104, alignment: .leading)
             Menu {
-                ForEach(Array(options.enumerated()), id: \.offset) { i, o in
-                    Button(o) { index.wrappedValue = i }
+                ForEach(options) { option in
+                    Button(option.name) { selection.wrappedValue = option.id }
                 }
             } label: {
                 HStack {
-                    Text(options[index.wrappedValue])
-                        .font(.system(size: 15)).foregroundColor(Color(hex: 0x646363))
+                    Text(options.first { $0.id == selection.wrappedValue }?.name ?? "点击选择")
                     Spacer()
-                    Image("arrow_right").resizable().scaledToFit()
-                        .frame(width: 12, height: 12).rotationEffect(.degrees(90))
+                    Image(systemName: "chevron.down").font(.system(size: 12))
                 }
+                .foregroundColor(C.sub)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity)
-            .layoutPriority(3)
+            .disabled(options.isEmpty)
         }
-        .frame(height: 40)
+        .padding(.horizontal, 12)
     }
 
-    private func dateRow(_ label: String, _ binding: Binding<Date>) -> some View {
-        HStack(spacing: 0) {
-            Text(label)
-                .font(.system(size: 15)).foregroundColor(.black)
-                .frame(height: 40, alignment: .center)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            DatePicker("", selection: binding, displayedComponents: [.date])
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .layoutPriority(3)
+    private func dateRow(_ title: String, selection: Binding<Date?>) -> some View {
+        HStack {
+            Text(title + "：").frame(width: 104, alignment: .leading)
+            DatePicker(title, selection: Binding(
+                get: { selection.wrappedValue ?? Date() },
+                set: { selection.wrappedValue = $0 }
+            ), displayedComponents: .date)
+            .labelsHidden()
+            .overlay {
+                if selection.wrappedValue == nil {
+                    Text("点击选择").foregroundColor(C.sub)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.white)
+                        .allowsHitTesting(false)
+                }
+            }
+            Spacer()
         }
-        .frame(height: 40)
+        .frame(minHeight: 44)
+        .padding(.horizontal, 12)
+    }
+
+    private func loadOptions() async {
+        loadingOptions = true
+        defer { loadingOptions = false }
+        do {
+            async let plantData = Net.shared.post("SIPAIIS_Base/user/getUnitForTree_Workshop.do", [:])
+            async let reviewerData = Net.shared.post("SIPAIIS_Base/user/getUnitForTree_User.do", [:])
+            async let typeData = Net.shared.post("SIPAIIS_Base/base/dict/data.do",
+                                                ["dictType": "Business_ProcessAdjustment", "unitId": app.unit])
+            plants = try Self.treeOptions(from: await plantData, users: false)
+            reviewers = try Self.treeOptions(from: await reviewerData, users: true)
+            types = try Net.array(await typeData, key: "result").compactMap { row in
+                let id = Net.str(row, "value")
+                let name = Net.str(row, "label")
+                guard !id.isEmpty, !name.isEmpty else { return nil }
+                return FormOption(id: id, name: name)
+            }
+            type = types.first?.id ?? ""
+            if plants.isEmpty || reviewers.isEmpty || types.isEmpty {
+                message = "厂区、审核人或调度类型未返回，请重新打开申请页重试。"
+            }
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private static func treeOptions(from data: Any, users: Bool) -> [FormOption] {
+        let roots = Net.array(data, key: "result")
+        var found = Set<String>()
+        func walk(_ nodes: [[String: Any]]) -> [FormOption] {
+            nodes.flatMap { node -> [FormOption] in
+                let children = Net.array(node, key: "children")
+                let id = Net.str(node, "id")
+                let name = Net.str(node, "label")
+                let selectable = users ? Net.str(node, "type") == "U" : children.isEmpty
+                if selectable && !id.isEmpty && !name.isEmpty && found.insert(id).inserted {
+                    return [FormOption(id: id, name: name)]
+                }
+                return walk(children)
+            }
+        }
+        return walk(roots.isEmpty ? Net.array(data) : roots)
     }
 
     private func submit() async {
-        busy = true
-        msg = nil
-        do {
-            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-            let raw = try await Net.shared.post(
-                "SIPAIIS_DataCenter/work/processAdjustment/dostart.do",
-                ["unitId": app.unit,
-                 "targetCompanyId": app.unit,
-                 "typeName": types[typeIndex],
-                 "adjustmentLevel": "\(levelIndex + 1)",
-                 "stdt": f.string(from: start),
-                 "eddt": f.string(from: end),
-                 "contents": content,
-                 "targetuser": receiver])
-            if Net.isOK(raw) {
-                app.show("调度已创建 ✓")
-                presentation.wrappedValue.dismiss()
-            } else {
-                msg = Net.message(raw)
-            }
-        } catch {
-            msg = error.localizedDescription
+        guard !busy else { return }
+        let description = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !plant.isEmpty, !reviewer.isEmpty, !type.isEmpty,
+              let start = start, let end = end, !description.isEmpty else {
+            message = "请填写调度厂区、类型、日期、内容和审核人。"
+            return
         }
-        busy = false
+        guard Calendar.current.startOfDay(for: end) >= Calendar.current.startOfDay(for: start) else {
+            message = "结束日期不能早于开始日期。"
+            return
+        }
+        busy = true
+        message = nil
+        defer { busy = false }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        do {
+            let raw = try await Net.shared.get(
+                "SIPAIIS_DataCenter/work/processAdjustment/dostart.do",
+                ["id": "", "unitId": app.unit, "targetcompanyid": plant,
+                 "type": type, "status": "0", "adjustmentLevel": level,
+                 "stdt": formatter.string(from: start) + " 00:00:00",
+                 "eddt": formatter.string(from: end) + " 00:00:00",
+                 "contents": description, "targetuser": reviewer])
+            guard Net.isOK(raw) else {
+                message = Net.message(raw)
+                return
+            }
+            app.show("调度已创建")
+            dismiss()
+        } catch {
+            message = error.localizedDescription
+        }
     }
 }
-
 
 // MARK: - 测点趋势（简单折线，兼容 iOS 15）
 
