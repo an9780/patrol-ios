@@ -320,7 +320,7 @@ struct MainTabView: View {
                 case 0: HomeScreen()
                 case 1: FaultScreen()
                 case 3: MyScreen()
-                default: PatrolScreen()
+                default: ProductionMonitoringScreen()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

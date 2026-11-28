@@ -593,6 +593,8 @@ struct MaintainDetailScreen: View {
 
     @StateObject private var store = DetailStore()
     @State private var showFill = false
+    @State private var maintenanceRows: [GenericRow] = []
+    @State private var entriesError: String?
 
     private let gray08 = Color(hex: 0x646363)
     private let grayT = Color(hex: 0xE5E5E5)
@@ -682,6 +684,20 @@ struct MaintainDetailScreen: View {
                     }
                     .padding(.horizontal, 10).padding(.vertical, 14)
 
+                    if let entriesError = entriesError {
+                        Text(entriesError).foregroundColor(.red).padding()
+                    }
+                    ForEach(maintenanceRows) { row in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(Net.str(row.raw, "equipmentNames")).font(.headline)
+                            Text(row.title)
+                            Text(Net.str(row.raw, "problemresult")).foregroundColor(C.sub)
+                            Text(Net.str(row.raw, "solvetime")).font(.caption)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color.white)
+                    }
                     Spacer(minLength: 0)
                 }
             }
@@ -694,10 +710,28 @@ struct MaintainDetailScreen: View {
             }
         }
         .task {
+            await loadEntries()
             await store.load(
                 path: "SIPAIIS_Equipment/maintenance/showMaintenanceDetailView.do",
                 params: ["id": maintenanceId, "unitId": app.unit,
                          "taskId": maintenanceId, "processInstanceId": ""])
+        }
+    }
+    private func loadEntries() async {
+        do {
+            let raw = try await Net.shared.post(
+                "SIPAIIS_Equipment/maintenance/getListMaintenanceDetail.do",
+                ["maintenanceId": maintenanceId, "page": "1", "rows": "50",
+                 "sort": "insdt", "order": "desc"])
+            let payload = Net.dict(raw)
+            let envelope = Net.dict(payload["result"])
+            guard payload["rows"] != nil || envelope["rows"] != nil else {
+                throw APIError.message("服务未返回维保明细")
+            }
+            let rows = Net.array(payload["rows"] ?? envelope["rows"])
+            maintenanceRows = rows.enumerated().map { GenericRow.from($0.element, index: $0.offset) }
+        } catch {
+            entriesError = error.localizedDescription
         }
     }
 }

@@ -243,6 +243,7 @@ struct KnowledgeDocScreen: View {
     let typeName: String
 
     @State private var rows: [GenericRow] = []
+    @State private var query = ""
     @State private var loading = false
     @State private var error: String?
 
@@ -283,15 +284,21 @@ struct KnowledgeDocScreen: View {
         .background(C.bg)
         .navigationTitle(typeName)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "搜索文档")
+        .onSubmit(of: .search) { Task { await load() } }
         .task { await load() }
     }
 
     private func load() async {
         loading = true
+        error = nil
+        rows = []
         do {
             let raw = try await Net.shared.post(
                 "SIPAIIS_LIBRARY/knowledge/searchDocument",
-                ["typeId": typeId, "page": "1", "rows": "100", "status": "1"])
+                ["typeId": typeId, "page": "1", "rows": "100", "status": "1",
+                 "roleIds": Net.shared.roleIDs.joined(separator: ","),
+                 "versiontag": "latest", "comment": query, "sort": "insdt", "isAsc": "false"])
             var arr: [[String: Any]] = []
             if let d = raw as? [String: Any] {
                 for k in ["rows", "result", "list", "data"] {

@@ -19,6 +19,7 @@ final class Net {
     private(set) var userid = ""
     private(set) var caption = ""
     private(set) var bizid = ""
+    private(set) var roleIDs: [String] = []
 
     private static let session: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -35,6 +36,7 @@ final class Net {
     }
 
     func clear() {
+        roleIDs = []
         token = ""; userid = ""; caption = ""; bizid = ""
     }
 
@@ -204,6 +206,7 @@ extension Net {
         }
         let res = Net.dict(d["res"])
         let rolesArr = Net.array(res["roles"])
+        roleIDs = rolesArr.map { Net.str($0, "id") }.filter { !$0.isEmpty }
         let roles = rolesArr.compactMap { $0["name"] as? String }
         let biz = rolesArr.map { Net.str($0, "bizid") }.first { !$0.isEmpty } ?? Net.str(res, "bizid")
         setSession(token: t,

@@ -45,12 +45,13 @@ struct HomeScreen: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = HomeStore()
     @State private var showVideo = false
+    @State private var showPatrol = false
     @State private var showOffline = false
-    @State private var showHistory = false
+    @State private var showAlarm = false
     @State private var showMaintain = false
     @State private var showReport = false
     @State private var showEquSearch = false
-    @State private var showSectionTree = false
+    @State private var showDispatch = false
 
     var body: some View {
         ScrollView {
@@ -134,9 +135,9 @@ struct HomeScreen: View {
 
                 // ── 第一行模块（60dp，4 个）──
                 HStack(spacing: 0) {
-                    module("巡检任务", "moudle_fg_main_patrol") { app.tab = 2 }
+                    module("巡检任务", "moudle_fg_main_patrol") { showPatrol = true }
                     module("异常上报", "moudle_fg_main_fault") { showReport = true }
-                    module("生产数据", "moudle_fg_main_data") { showSectionTree = true }
+                    module("调度申请", "moudle_fg_main_data") { showDispatch = true }
                     module("设备查询", "moudle_fg_main_equ") { showEquSearch = true }
                 }
                 .frame(height: 60)
@@ -144,29 +145,30 @@ struct HomeScreen: View {
 
                 // ── 第二行模块（60dp，4 个可见）──
                 HStack(spacing: 0) {
-                    module("历史任务", "moudle_fg_main_alarm") { showHistory = true }
-                    module("设备维保", "moudle_fg_main_com_adj") { showMaintain = true }
+                    module("历史报警", "moudle_fg_main_alarm") { showAlarm = true }
+                    module("保养工单", "moudle_fg_main_com_adj") { showMaintain = true }
                     module("离线巡检", "moudle_fg_main_file") { showOffline = true }
                     module("视频监控", "moudle_fg_main_video") { showVideo = true }
                 }
                 .frame(height: 60)
                 .padding(.bottom, 10)
 
-                Spacer(minLength: 0)
+                HomePlantReadings(unit: app.unit)
             }
         }
         .background(C.bg)
         .navigationBarHidden(true)
+        .sheet(isPresented: $showPatrol) { PatrolScreen().environmentObject(app) }
         .sheet(isPresented: $showVideo) { NavigationView { VideoCatalogScreen() }.environmentObject(app) }
         .sheet(isPresented: $showOffline) { NavigationView { OfflinePatrolScreen() }.environmentObject(app) }
         .sheet(isPresented: $showReport) { FaultReportScreen().environmentObject(app) }
-        .sheet(isPresented: $showHistory) { NavigationView { HistoryListScreen() }.environmentObject(app) }
+        .sheet(isPresented: $showAlarm) { AlarmScreen().environmentObject(app) }
         .sheet(isPresented: $showMaintain) { MaintainScreen().environmentObject(app) }
         .sheet(isPresented: $showEquSearch) {
             NavigationView { EquipmentSearchScreen().environmentObject(app) }
         }
-        .sheet(isPresented: $showSectionTree) {
-            NavigationView { SectionTreeScreen().environmentObject(app) }
+        .sheet(isPresented: $showDispatch) {
+            DispatchScreen().environmentObject(app)
         }
         .task { await store.load(unit: app.unit, date: app.date) }
     }
